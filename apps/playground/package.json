@@ -1,0 +1,16 @@
+{
+  "name": "@coreforge/playground",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Developer testbed playground for CoreForge",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@coreforge/core": "*"
+  }
+}

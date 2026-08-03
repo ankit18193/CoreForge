@@ -1,0 +1,16 @@
+{
+  "name": "@coreforge/errors",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework-wide error hierarchy for CoreForge",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@coreforge/types": "*",
+    "@coreforge/contracts": "*"
+  }
+}

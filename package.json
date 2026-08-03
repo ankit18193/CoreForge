@@ -1,0 +1,31 @@
+{
+  "name": "coreforge-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enterprise Backend Infrastructure Platform",
+  "workspaces": [
+    "apps/playground",
+    "packages/foundation/*",
+    "packages/framework/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean && rimraf packages/foundation/*/dist packages/framework/*/dist apps/*/dist",
+    "dev": "tsc -b -w",
+    "lint": "eslint \"**/*.ts\" --max-warnings 0",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
+    "test": "node --test packages/framework/runtime/dist/tests/runtime.test.js packages/framework/config/dist/tests/config.test.js packages/framework/container/dist/tests/container.test.js packages/framework/events/dist/tests/events.test.js packages/framework/modules/dist/tests/modules.test.js"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@types/node": "^20.11.24",
+    "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-unused-imports": "^3.1.0",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  }
+}

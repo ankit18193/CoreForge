@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/foundation/types" },
+    { "path": "packages/foundation/contracts" },
+    { "path": "packages/foundation/errors" },
+    { "path": "packages/foundation/utils" },
+    { "path": "packages/framework/config" },
+    { "path": "packages/framework/container" },
+    { "path": "packages/framework/events" },
+    { "path": "packages/framework/runtime" },
+    { "path": "packages/framework/modules" },
+    { "path": "packages/framework/core" },
+    { "path": "apps/playground" }
+  ]
+}

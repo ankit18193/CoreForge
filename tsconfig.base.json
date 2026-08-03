@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@coreforge/types": ["packages/foundation/types/src/index.ts"],
+      "@coreforge/contracts": ["packages/foundation/contracts/src/index.ts"],
+      "@coreforge/errors": ["packages/foundation/errors/src/index.ts"],
+      "@coreforge/utils": ["packages/foundation/utils/src/index.ts"],
+      "@coreforge/config": ["packages/framework/config/src/index.ts"],
+      "@coreforge/container": ["packages/framework/container/src/index.ts"],
+      "@coreforge/events": ["packages/framework/events/src/index.ts"],
+      "@coreforge/runtime": ["packages/framework/runtime/src/index.ts"],
+      "@coreforge/core": ["packages/framework/core/src/index.ts"]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../foundation/types" },
+    { "path": "../../foundation/contracts" },
+    { "path": "../../foundation/errors" },
+    { "path": "../../foundation/utils" },
+    { "path": "../config" },
+    { "path": "../container" },
+    { "path": "../events" }
+  ]
+}

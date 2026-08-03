@@ -1,0 +1,42 @@
+version: '3.8'
+
+# ==============================================================================
+# COREFORGE INFRASTRUCTURE ENVIRONMENT (PHASE 1 - FOUNDATION)
+# ==============================================================================
+# This Docker Compose configuration is set up as a blueprint for local
+# development infrastructure. For Phase 1, all services are disabled/commented 
+# to keep the foundation completely clean of active operational dependencies.
+# Future modules will activate these services as required.
+
+services:
+  # ============================================================================
+  # FUTURE INFRASTRUCTURE COMPONENTS
+  # ============================================================================
+  
+  # postgres-db:
+  #   image: postgres:16-alpine
+  #   container_name: coreforge-postgres
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_DB: coreforge_dev
+  #     POSTGRES_USER: coreforge
+  #     POSTGRES_PASSWORD: development_secret_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+  # redis-cache:
+  #   image: redis:7.2-alpine
+  #   container_name: coreforge-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
+
+# volumes:
+#   postgres_data:
+#     driver: local
+#   redis_data:
+#     driver: local
