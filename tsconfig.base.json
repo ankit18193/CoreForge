@@ -25,6 +25,10 @@
       "@coreforge/config": ["packages/framework/config/src/index.ts"],
       "@coreforge/container": ["packages/framework/container/src/index.ts"],
       "@coreforge/events": ["packages/framework/events/src/index.ts"],
+      "@coreforge/logging": ["packages/framework/logging/src/index.ts"],
+      "@coreforge/exceptions": ["packages/framework/exceptions/src/index.ts"],
+      "@coreforge/modules": ["packages/framework/modules/src/index.ts"],
+      "@coreforge/bootstrap": ["packages/framework/bootstrap/src/index.ts"],
       "@coreforge/runtime": ["packages/framework/runtime/src/index.ts"],
       "@coreforge/core": ["packages/framework/core/src/index.ts"]
     }

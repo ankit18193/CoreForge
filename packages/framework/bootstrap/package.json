@@ -1,0 +1,24 @@
+{
+  "name": "@coreforge/bootstrap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework Lifecycle Bootstrap Engine for CoreForge",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@coreforge/types": "*",
+    "@coreforge/contracts": "*",
+    "@coreforge/errors": "*",
+    "@coreforge/config": "*",
+    "@coreforge/container": "*",
+    "@coreforge/logging": "*",
+    "@coreforge/exceptions": "*",
+    "@coreforge/events": "*",
+    "@coreforge/modules": "*",
+    "@coreforge/runtime": "*"
+  }
+}

@@ -17,6 +17,7 @@ export interface Logger {
   info(message: string, context?: unknown): void;
   warn(message: string, context?: unknown): void;
   error(message: string, error?: Error, context?: unknown): void;
+  fatal(message: string, error?: Error, context?: unknown): void;
 }
 
 // Framework Module Contract
@@ -45,4 +46,28 @@ export interface EventBus {
   publish(event: unknown): Promise<void>;
   subscribe(eventType: unknown, handler: (event: unknown) => Promise<void> | void): unknown;
   unsubscribe(subscription: unknown): void;
+}
+
+// Exception Pipeline Contracts
+export interface ExceptionContext {
+  readonly requestId?: string | undefined;
+  readonly traceId?: string | undefined;
+  readonly spanId?: string | undefined;
+  readonly module?: string | undefined;
+  readonly service?: string | undefined;
+  readonly operation?: string | undefined;
+  readonly environment?: string | undefined;
+  readonly runtimeState?: string | undefined;
+  readonly moduleState?: string | undefined;
+  readonly timestamp: number;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface ExceptionHandler {
+  handle(error: Error, context?: ExceptionContext): Promise<void>;
+}
+
+export interface Bootstrap {
+  start(): Promise<void>;
+  stop(): Promise<void>;
 }

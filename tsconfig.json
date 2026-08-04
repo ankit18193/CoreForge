@@ -10,6 +10,9 @@
     { "path": "packages/framework/events" },
     { "path": "packages/framework/runtime" },
     { "path": "packages/framework/modules" },
+    { "path": "packages/framework/logging" },
+    { "path": "packages/framework/exceptions" },
+    { "path": "packages/framework/bootstrap" },
     { "path": "packages/framework/core" },
     { "path": "apps/playground" }
   ]
