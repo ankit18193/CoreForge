@@ -28,6 +28,7 @@
     { "path": "packages/framework/metadata" },
     { "path": "packages/framework/discovery" },
     { "path": "packages/framework/compiler" },
+    { "path": "packages/framework/scanner" },
     { "path": "packages/framework/core" },
     { "path": "apps/playground" }
   ]

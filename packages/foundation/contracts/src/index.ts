@@ -337,3 +337,16 @@ export interface CompilationResult {
 export interface ModuleCompiler {
   compile(discovery: DiscoveryResult): Promise<CompilationResult>;
 }
+
+export interface RegistrationDescriptor {
+  readonly id: string;
+  readonly type: string;
+}
+
+export interface ScanResult {
+  readonly registrations: readonly RegistrationDescriptor[];
+}
+
+export interface ApplicationScanner {
+  scan(compilation: CompilationResult): Promise<ScanResult>;
+}

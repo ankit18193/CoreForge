@@ -44,6 +44,7 @@
       "@coreforge/metadata": ["packages/framework/metadata/src/index.ts"],
       "@coreforge/discovery": ["packages/framework/discovery/src/index.ts"],
       "@coreforge/compiler": ["packages/framework/compiler/src/index.ts"],
+      "@coreforge/scanner": ["packages/framework/scanner/src/index.ts"],
       "@coreforge/runtime": ["packages/framework/runtime/src/index.ts"],
       "@coreforge/core": ["packages/framework/core/src/index.ts"]
     }
