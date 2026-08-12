@@ -1,0 +1,6 @@
+export enum RequestStage {
+  ROUTING = 'ROUTING',
+  MIDDLEWARE = 'MIDDLEWARE',
+  CONTROLLER = 'CONTROLLER',
+  RESPONDING = 'RESPONDING',
+}

@@ -1,0 +1,9 @@
+export enum MiddlewareState {
+  CREATED = 'CREATED',
+  BUILDING = 'BUILDING',
+  READY = 'READY',
+  RUNNING = 'RUNNING',
+  STOPPING = 'STOPPING',
+  STOPPED = 'STOPPED',
+  FAILED = 'FAILED',
+}

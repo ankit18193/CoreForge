@@ -286,11 +286,12 @@ export class Bootstrap implements IBootstrap {
           environment: String(config.env || 'development'),
         };
         if (this._configuration.runtimeOptions.enableSignalHandlers !== undefined) {
-          runtimeOptions.enableSignalHandlers =
-            this._configuration.runtimeOptions.enableSignalHandlers as boolean;
+          runtimeOptions.enableSignalHandlers = this._configuration.runtimeOptions
+            .enableSignalHandlers as boolean;
         }
         if (this._configuration.runtimeOptions.shutdownTimeoutMs !== undefined) {
-          runtimeOptions.shutdownTimeoutMs = this._configuration.runtimeOptions.shutdownTimeoutMs as number;
+          runtimeOptions.shutdownTimeoutMs = this._configuration.runtimeOptions
+            .shutdownTimeoutMs as number;
         }
 
         const runtime = new Runtime(runtimeOptions, logger);

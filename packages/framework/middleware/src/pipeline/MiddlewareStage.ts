@@ -1,0 +1,6 @@
+export enum MiddlewareStage {
+  PRE_RESOLVE = 'PRE_RESOLVE',
+  POST_RESOLVE = 'POST_RESOLVE',
+  PRE_EXECUTE = 'PRE_EXECUTE',
+  POST_EXECUTE = 'POST_EXECUTE',
+}

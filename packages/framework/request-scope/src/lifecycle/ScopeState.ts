@@ -1,0 +1,7 @@
+export enum ScopeState {
+  CREATED = 'CREATED',
+  ACTIVE = 'ACTIVE',
+  DISPOSING = 'DISPOSING',
+  DISPOSED = 'DISPOSED',
+  FAILED = 'FAILED',
+}

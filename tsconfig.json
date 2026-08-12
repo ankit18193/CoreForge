@@ -13,6 +13,18 @@
     { "path": "packages/framework/logging" },
     { "path": "packages/framework/exceptions" },
     { "path": "packages/framework/bootstrap" },
+    { "path": "packages/framework/http" },
+    { "path": "packages/framework/router" },
+    { "path": "packages/framework/middleware" },
+    { "path": "packages/framework/controllers" },
+    { "path": "packages/framework/request-handler" },
+    { "path": "packages/framework/binding" },
+    { "path": "packages/framework/request-scope" },
+    { "path": "packages/framework/action-invoker" },
+    { "path": "packages/framework/serialization" },
+    { "path": "packages/framework/security" },
+    { "path": "packages/framework/interceptors" },
+    { "path": "packages/framework/application" },
     { "path": "packages/framework/core" },
     { "path": "apps/playground" }
   ]

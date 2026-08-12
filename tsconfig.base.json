@@ -29,6 +29,18 @@
       "@coreforge/exceptions": ["packages/framework/exceptions/src/index.ts"],
       "@coreforge/modules": ["packages/framework/modules/src/index.ts"],
       "@coreforge/bootstrap": ["packages/framework/bootstrap/src/index.ts"],
+      "@coreforge/http": ["packages/framework/http/src/index.ts"],
+      "@coreforge/router": ["packages/framework/router/src/index.ts"],
+      "@coreforge/middleware": ["packages/framework/middleware/src/index.ts"],
+      "@coreforge/controllers": ["packages/framework/controllers/src/index.ts"],
+      "@coreforge/request-handler": ["packages/framework/request-handler/src/index.ts"],
+      "@coreforge/binding": ["packages/framework/binding/src/index.ts"],
+      "@coreforge/request-scope": ["packages/framework/request-scope/src/index.ts"],
+      "@coreforge/action-invoker": ["packages/framework/action-invoker/src/index.ts"],
+      "@coreforge/serialization": ["packages/framework/serialization/src/index.ts"],
+      "@coreforge/security": ["packages/framework/security/src/index.ts"],
+      "@coreforge/interceptors": ["packages/framework/interceptors/src/index.ts"],
+      "@coreforge/application": ["packages/framework/application/src/index.ts"],
       "@coreforge/runtime": ["packages/framework/runtime/src/index.ts"],
       "@coreforge/core": ["packages/framework/core/src/index.ts"]
     }

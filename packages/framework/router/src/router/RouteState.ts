@@ -1,0 +1,8 @@
+export enum RouteState {
+  CREATED = 'CREATED',
+  REGISTERING = 'REGISTERING',
+  READY = 'READY',
+  STOPPING = 'STOPPING',
+  STOPPED = 'STOPPED',
+  FAILED = 'FAILED',
+}

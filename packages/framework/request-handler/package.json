@@ -1,0 +1,24 @@
+{
+  "name": "@coreforge/request-handler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Request Handler Pipeline for CoreForge",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@coreforge/types": "*",
+    "@coreforge/contracts": "*",
+    "@coreforge/errors": "*",
+    "@coreforge/container": "*",
+    "@coreforge/logging": "*",
+    "@coreforge/events": "*",
+    "@coreforge/router": "*",
+    "@coreforge/middleware": "*",
+    "@coreforge/controllers": "*",
+    "@coreforge/exceptions": "*"
+  }
+}

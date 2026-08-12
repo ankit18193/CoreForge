@@ -1,0 +1,32 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../foundation/types" },
+    { "path": "../../foundation/contracts" },
+    { "path": "../../foundation/errors" },
+    { "path": "../container" },
+    { "path": "../logging" },
+    { "path": "../events" },
+    { "path": "../runtime" },
+    { "path": "../config" },
+    { "path": "../exceptions" },
+    { "path": "../bootstrap" },
+    { "path": "../http" },
+    { "path": "../router" },
+    { "path": "../middleware" },
+    { "path": "../controllers" },
+    { "path": "../request-handler" },
+    { "path": "../binding" },
+    { "path": "../request-scope" },
+    { "path": "../action-invoker" },
+    { "path": "../serialization" },
+    { "path": "../security" },
+    { "path": "../interceptors" }
+  ]
+}

@@ -15,3 +15,4 @@ export type {
   Registration,
   ServiceDescriptor,
 } from './types/containerTypes';
+export { ServiceRegistry } from './registry/ServiceRegistry';

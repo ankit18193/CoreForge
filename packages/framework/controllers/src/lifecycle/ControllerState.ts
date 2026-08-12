@@ -1,0 +1,9 @@
+export enum ControllerState {
+  CREATED = 'CREATED',
+  REGISTERING = 'REGISTERING',
+  READY = 'READY',
+  RUNNING = 'RUNNING',
+  STOPPING = 'STOPPING',
+  STOPPED = 'STOPPED',
+  FAILED = 'FAILED',
+}
