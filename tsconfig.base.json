@@ -41,6 +41,9 @@
       "@coreforge/security": ["packages/framework/security/src/index.ts"],
       "@coreforge/interceptors": ["packages/framework/interceptors/src/index.ts"],
       "@coreforge/application": ["packages/framework/application/src/index.ts"],
+      "@coreforge/metadata": ["packages/framework/metadata/src/index.ts"],
+      "@coreforge/discovery": ["packages/framework/discovery/src/index.ts"],
+      "@coreforge/compiler": ["packages/framework/compiler/src/index.ts"],
       "@coreforge/runtime": ["packages/framework/runtime/src/index.ts"],
       "@coreforge/core": ["packages/framework/core/src/index.ts"]
     }

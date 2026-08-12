@@ -25,6 +25,9 @@
     { "path": "packages/framework/security" },
     { "path": "packages/framework/interceptors" },
     { "path": "packages/framework/application" },
+    { "path": "packages/framework/metadata" },
+    { "path": "packages/framework/discovery" },
+    { "path": "packages/framework/compiler" },
     { "path": "packages/framework/core" },
     { "path": "apps/playground" }
   ]

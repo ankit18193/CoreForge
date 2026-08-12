@@ -1,0 +1,8 @@
+export enum DiscoveryState {
+  CREATED = 'CREATED',
+  SCANNING = 'SCANNING',
+  VALIDATING = 'VALIDATING',
+  READY = 'READY',
+  STOPPED = 'STOPPED',
+  FAILED = 'FAILED',
+}

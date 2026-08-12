@@ -283,3 +283,57 @@ export interface Application {
   start(): Promise<void>;
   stop(): Promise<void>;
 }
+
+export enum MetadataType {
+  MODULE = 'MODULE',
+  CONTROLLER = 'CONTROLLER',
+  ACTION = 'ACTION',
+  ROUTE = 'ROUTE',
+  PARAMETER = 'PARAMETER',
+  PROVIDER = 'PROVIDER',
+  MIDDLEWARE = 'MIDDLEWARE',
+  INTERCEPTOR = 'INTERCEPTOR',
+  SECURITY = 'SECURITY',
+}
+
+export interface MetadataDescriptor {
+  readonly id: string;
+  readonly type: MetadataType;
+  readonly parentId?: string | undefined;
+}
+
+export interface MetadataRegistry {
+  register(descriptor: MetadataDescriptor): void;
+  resolve(type: MetadataType): readonly MetadataDescriptor[];
+}
+
+export interface DependencyGraph {
+  readonly size: number;
+  hasNode(id: string): boolean;
+  getDependencies(id: string): readonly string[];
+}
+
+export interface DiscoveryResult {
+  readonly graph: DependencyGraph;
+  readonly modules: readonly MetadataDescriptor[];
+  readonly controllers: readonly MetadataDescriptor[];
+  readonly providers: readonly MetadataDescriptor[];
+  readonly routes: readonly MetadataDescriptor[];
+  readonly middleware: readonly MetadataDescriptor[];
+  readonly interceptors: readonly MetadataDescriptor[];
+  readonly security: readonly MetadataDescriptor[];
+}
+
+export interface DiscoveryEngine {
+  discover(): Promise<DiscoveryResult>;
+}
+
+export interface CompilationArtifact {}
+
+export interface CompilationResult {
+  readonly application: CompilationArtifact;
+}
+
+export interface ModuleCompiler {
+  compile(discovery: DiscoveryResult): Promise<CompilationResult>;
+}

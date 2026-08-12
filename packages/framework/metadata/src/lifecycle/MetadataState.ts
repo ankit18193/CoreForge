@@ -1,0 +1,7 @@
+export enum MetadataState {
+  CREATED = 'CREATED',
+  REGISTERING = 'REGISTERING',
+  READY = 'READY',
+  STOPPED = 'STOPPED',
+  FAILED = 'FAILED',
+}

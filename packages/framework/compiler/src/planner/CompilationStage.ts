@@ -1,0 +1,6 @@
+export enum CompilationStage {
+  PLANNING = 'PLANNING',
+  VALIDATING = 'VALIDATING',
+  OPTIMIZING = 'OPTIMIZING',
+  COMPILED = 'COMPILED',
+}
