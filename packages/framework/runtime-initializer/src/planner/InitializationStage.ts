@@ -1,0 +1,6 @@
+export enum InitializationStage {
+  PLANNING = 'PLANNING',
+  INITIALIZING = 'INITIALIZING',
+  ROLLING_BACK = 'ROLLING_BACK',
+  READY = 'READY',
+}

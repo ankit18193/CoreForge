@@ -1,0 +1,9 @@
+export enum PluginState {
+  CREATED = 'CREATED',
+  REGISTERED = 'REGISTERED',
+  LOADING = 'LOADING',
+  LOADED = 'LOADED',
+  ENABLED = 'ENABLED',
+  DISABLED = 'DISABLED',
+  FAILED = 'FAILED',
+}

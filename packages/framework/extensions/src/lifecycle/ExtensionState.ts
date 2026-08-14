@@ -1,0 +1,8 @@
+export enum ExtensionState {
+  CREATED = 'CREATED',
+  LOADING = 'LOADING',
+  LOADED = 'LOADED',
+  ENABLED = 'ENABLED',
+  DISABLED = 'DISABLED',
+  FAILED = 'FAILED',
+}

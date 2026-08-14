@@ -1,0 +1,6 @@
+export enum IntegrationStage {
+  VALIDATING = 'VALIDATING',
+  INTEGRATING = 'INTEGRATING',
+  FINALIZING = 'FINALIZING',
+  READY = 'READY',
+}

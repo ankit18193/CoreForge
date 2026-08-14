@@ -350,3 +350,92 @@ export interface ScanResult {
 export interface ApplicationScanner {
   scan(compilation: CompilationResult): Promise<ScanResult>;
 }
+
+export interface RuntimeAssembly {
+  readonly modules: readonly unknown[];
+  readonly providers: readonly unknown[];
+  readonly controllers: readonly unknown[];
+  readonly routes: readonly unknown[];
+  readonly middleware: readonly unknown[];
+  readonly interceptors: readonly unknown[];
+  readonly security: readonly unknown[];
+}
+
+export interface AssemblyResult {
+  readonly runtime: RuntimeAssembly;
+}
+
+export interface RuntimeAssembler {
+  assemble(scan: ScanResult): Promise<AssemblyResult>;
+}
+
+export interface InitializedRuntime {
+  readonly modules: readonly unknown[];
+  readonly providers: readonly unknown[];
+  readonly controllers: readonly unknown[];
+  readonly routes: readonly unknown[];
+  readonly middleware: readonly unknown[];
+  readonly interceptors: readonly unknown[];
+  readonly security: readonly unknown[];
+}
+
+export interface InitializationResult {
+  readonly runtime: InitializedRuntime;
+}
+
+export interface RuntimeInitializer {
+  initialize(
+    assembly: RuntimeAssembly,
+  ): Promise<InitializationResult>;
+}
+
+export interface RuntimeExecutionResult {
+  readonly started: boolean;
+}
+
+export interface RuntimeOrchestrator {
+  start(runtime: InitializedRuntime): Promise<RuntimeExecutionResult>;
+  stop(): Promise<void>;
+}
+
+export interface ExtensionDescriptor {
+  readonly id: string;
+  readonly version: string;
+  readonly dependencies?: readonly string[];
+}
+
+export interface ExtensionManager {
+  register(extension: ExtensionDescriptor): void;
+  enable(id: string): Promise<void>;
+  disable(id: string): Promise<void>;
+  registered(): readonly ExtensionDescriptor[];
+}
+
+export interface PluginDescriptor {
+  readonly id: string;
+  readonly version: string;
+  readonly dependencies?: readonly string[];
+}
+
+export interface PluginContext {}
+
+export interface Plugin {
+  initialize(context: PluginContext): Promise<void>;
+  shutdown(): Promise<void>;
+}
+
+export interface PluginManager {
+  register(plugin: PluginDescriptor): void;
+  enable(id: string): Promise<void>;
+  disable(id: string): Promise<void>;
+  registered(): readonly PluginDescriptor[];
+}
+
+export interface KernelSnapshot {
+  readonly version: string;
+  readonly initialized: boolean;
+}
+
+export interface FrameworkKernel {
+  initialize(): Promise<KernelSnapshot>;
+}

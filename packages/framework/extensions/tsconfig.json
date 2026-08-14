@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../foundation/types" },
+    { "path": "../../foundation/contracts" },
+    { "path": "../../foundation/errors" },
+    { "path": "../runtime-orchestrator" }
+  ]
+}

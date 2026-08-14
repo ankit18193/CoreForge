@@ -1,0 +1,9 @@
+export enum KernelState {
+  CREATED = 'CREATED',
+  BUILDING = 'BUILDING',
+  VALIDATING = 'VALIDATING',
+  READY = 'READY',
+  RUNNING = 'RUNNING',
+  STOPPED = 'STOPPED',
+  FAILED = 'FAILED',
+}

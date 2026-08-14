@@ -1,0 +1,8 @@
+export enum RuntimeInitializationState {
+  CREATED = 'CREATED',
+  PLANNING = 'PLANNING',
+  INITIALIZING = 'INITIALIZING',
+  ROLLING_BACK = 'ROLLING_BACK',
+  READY = 'READY',
+  FAILED = 'FAILED',
+}

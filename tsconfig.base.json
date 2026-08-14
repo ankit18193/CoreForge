@@ -45,6 +45,12 @@
       "@coreforge/discovery": ["packages/framework/discovery/src/index.ts"],
       "@coreforge/compiler": ["packages/framework/compiler/src/index.ts"],
       "@coreforge/scanner": ["packages/framework/scanner/src/index.ts"],
+      "@coreforge/assembler": ["packages/framework/assembler/src/index.ts"],
+      "@coreforge/runtime-initializer": ["packages/framework/runtime-initializer/src/index.ts"],
+      "@coreforge/runtime-orchestrator": ["packages/framework/runtime-orchestrator/src/index.ts"],
+      "@coreforge/extensions": ["packages/framework/extensions/src/index.ts"],
+      "@coreforge/plugins": ["packages/framework/plugins/src/index.ts"],
+      "@coreforge/kernel": ["packages/framework/kernel/src/index.ts"],
       "@coreforge/runtime": ["packages/framework/runtime/src/index.ts"],
       "@coreforge/core": ["packages/framework/core/src/index.ts"]
     }

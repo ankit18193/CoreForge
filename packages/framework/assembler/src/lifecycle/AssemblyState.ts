@@ -1,0 +1,8 @@
+export enum AssemblyState {
+  CREATED = 'CREATED',
+  PLANNING = 'PLANNING',
+  ASSEMBLING = 'ASSEMBLING',
+  VALIDATING = 'VALIDATING',
+  READY = 'READY',
+  FAILED = 'FAILED',
+}

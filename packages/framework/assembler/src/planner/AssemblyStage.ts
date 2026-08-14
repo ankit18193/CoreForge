@@ -1,0 +1,6 @@
+export enum AssemblyStage {
+  PLANNING = 'PLANNING',
+  ASSEMBLING = 'ASSEMBLING',
+  VALIDATING = 'VALIDATING',
+  READY = 'READY',
+}

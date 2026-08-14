@@ -29,6 +29,12 @@
     { "path": "packages/framework/discovery" },
     { "path": "packages/framework/compiler" },
     { "path": "packages/framework/scanner" },
+    { "path": "packages/framework/assembler" },
+    { "path": "packages/framework/runtime-initializer" },
+    { "path": "packages/framework/runtime-orchestrator" },
+    { "path": "packages/framework/extensions" },
+    { "path": "packages/framework/plugins" },
+    { "path": "packages/framework/kernel" },
     { "path": "packages/framework/core" },
     { "path": "apps/playground" }
   ]
