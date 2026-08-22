@@ -4,7 +4,11 @@ import { ActionArguments } from '../arguments/ActionArguments';
 import { ArgumentResolver } from '../arguments/ArgumentResolver';
 import { TypeConverter } from '../converter/TypeConverter';
 import { BindingDiagnostics } from '../diagnostics/BindingDiagnostics';
-import { ConversionError, ValidationException, BindingExecutionError } from '../errors/BindingErrors';
+import {
+  ConversionError,
+  ValidationException,
+  BindingExecutionError,
+} from '../errors/BindingErrors';
 import { BodyExtractor } from '../extractor/BodyExtractor';
 import { CookieExtractor } from '../extractor/CookieExtractor';
 import { HeaderExtractor } from '../extractor/HeaderExtractor';
@@ -32,11 +36,7 @@ export class BindingCoordinator {
   private readonly _resolver = new ArgumentResolver();
   private readonly _diagnostics: BindingDiagnostics;
 
-  constructor(
-    typeConverter: TypeConverter,
-    validator: Validator,
-    diagnostics: BindingDiagnostics,
-  ) {
+  constructor(typeConverter: TypeConverter, validator: Validator, diagnostics: BindingDiagnostics) {
     this._typeConverter = typeConverter;
     this._validator = validator;
     this._diagnostics = diagnostics;

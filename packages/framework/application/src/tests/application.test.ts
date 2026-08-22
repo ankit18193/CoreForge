@@ -220,7 +220,11 @@ test('Application Kernel Package', async (t) => {
     const app = builder.build();
 
     assert.throws(() => {
-      ((app as unknown as Record<string, unknown>)._kernel as { transitionTo(state: KernelState): void }).transitionTo(KernelState.STOPPED);
+      (
+        (app as unknown as Record<string, unknown>)._kernel as {
+          transitionTo(state: KernelState): void;
+        }
+      ).transitionTo(KernelState.STOPPED);
     }, ApplicationStateError);
   });
 
@@ -232,7 +236,11 @@ test('Application Kernel Package', async (t) => {
 
     const app = builder.build();
     assert.throws(() => {
-      ((app as unknown as Record<string, unknown>)._kernel as { registry: { registerRoute(path: string): void } }).registry.registerRoute('/new');
+      (
+        (app as unknown as Record<string, unknown>)._kernel as {
+          registry: { registerRoute(path: string): void };
+        }
+      ).registry.registerRoute('/new');
     });
   });
 });

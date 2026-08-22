@@ -38,12 +38,7 @@ export class AssemblyDiagnostics {
   private _cacheMisses = 0;
   private _validationFailures = 0;
 
-  public recordTimings(
-    assembly: number,
-    planner: number,
-    graph: number,
-    validation: number,
-  ): void {
+  public recordTimings(assembly: number, planner: number, graph: number, validation: number): void {
     this._assemblyTimeMs = assembly;
     this._plannerTimeMs = planner;
     this._graphTimeMs = graph;

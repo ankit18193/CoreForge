@@ -89,7 +89,12 @@ test('Authentication & Authorization Pipeline Package', async (t) => {
   );
 
   await t.test('Provider Priority - first successful provider wins', async () => {
-    const sessionIdentity = new Identity({ id: 'sessionUser', roles: [], claims: {}, provider: 'Session' });
+    const sessionIdentity = new Identity({
+      id: 'sessionUser',
+      roles: [],
+      claims: {},
+      provider: 'Session',
+    });
     const jwtIdentity = new Identity({ id: 'jwtUser', roles: [], claims: {}, provider: 'JWT' });
 
     const builder = new SecurityBuilder()

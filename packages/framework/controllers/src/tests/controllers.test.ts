@@ -201,35 +201,32 @@ test('Controller System Framework Package', async (t) => {
     assert.strictEqual(snapshot.failedExecutions, 0);
   });
 
-  await t.test(
-    'Stress Scale Test - 10,000 controllers registration & execution',
-    async () => {
-      const factory = new ControllerFactory();
-      const manager = new ControllerManager(factory);
-      manager.startRegistration();
+  await t.test('Stress Scale Test - 10,000 controllers registration & execution', async () => {
+    const factory = new ControllerFactory();
+    const manager = new ControllerManager(factory);
+    manager.startRegistration();
 
-      class DynamicController implements Controller {
-        public index() {
-          return 'ok';
-        }
+    class DynamicController implements Controller {
+      public index() {
+        return 'ok';
       }
+    }
 
-      for (let i = 0; i < 10000; i++) {
-        manager.register(DynamicController, {
-          id: `ctrl-${i}`,
-          name: `DynamicController-${i}`,
-        });
-      }
+    for (let i = 0; i < 10000; i++) {
+      manager.register(DynamicController, {
+        id: `ctrl-${i}`,
+        name: `DynamicController-${i}`,
+      });
+    }
 
-      manager.completeRegistration();
-      const snapshot = manager.diagnostics.getSnapshot();
-      assert.strictEqual(snapshot.totalControllers, 10000);
-      assert.strictEqual(snapshot.totalActions, 10000);
+    manager.completeRegistration();
+    const snapshot = manager.diagnostics.getSnapshot();
+    assert.strictEqual(snapshot.totalControllers, 10000);
+    assert.strictEqual(snapshot.totalActions, 10000);
 
-      const context = createContext();
-      const target = manager.registry.get('ctrl-5000')!;
-      const val = await manager.execute(target.instance, 'index', context);
-      assert.strictEqual(val, 'ok');
-    },
-  );
+    const context = createContext();
+    const target = manager.registry.get('ctrl-5000')!;
+    const val = await manager.execute(target.instance, 'index', context);
+    assert.strictEqual(val, 'ok');
+  });
 });

@@ -8,7 +8,4 @@ export { MiddlewareScope } from './registry/MiddlewareScope';
 export type { PipelineTarget } from './executor/PipelineTarget';
 export type { MiddlewareResult } from './execution/MiddlewareResult';
 export type { MiddlewareDiagnosticsSnapshot } from './diagnostics/MiddlewareDiagnostics';
-export {
-  MiddlewareExecutionError,
-  MiddlewareRegistrationError,
-} from './errors/MiddlewareErrors';
+export { MiddlewareExecutionError, MiddlewareRegistrationError } from './errors/MiddlewareErrors';

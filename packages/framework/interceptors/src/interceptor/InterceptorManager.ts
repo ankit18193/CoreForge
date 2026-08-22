@@ -63,7 +63,9 @@ export class InterceptorManager implements IInterceptorManager {
     next: NextInvocation,
   ): Promise<IInterceptionResult> {
     if (this._lifecycle.state !== InterceptorState.READY) {
-      throw new Error(`InterceptorManager is not in READY state (current: ${this._lifecycle.state}).`);
+      throw new Error(
+        `InterceptorManager is not in READY state (current: ${this._lifecycle.state}).`,
+      );
     }
 
     const profiler = new InterceptorProfiler();

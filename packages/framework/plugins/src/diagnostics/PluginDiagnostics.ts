@@ -46,11 +46,7 @@ export class PluginDiagnostics {
     this._registeredCount = count;
   }
 
-  public recordResolution(
-    duration: number,
-    size: number,
-    depth: number,
-  ): void {
+  public recordResolution(duration: number, size: number, depth: number): void {
     this._dependencyResolutionDurationMs = duration;
     this._dependencyGraphSize = size;
     this._dependencyGraphDepth = depth;

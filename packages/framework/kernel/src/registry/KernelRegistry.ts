@@ -4,14 +4,10 @@ export class KernelRegistry {
 
   public register(id: string, subsystem: unknown): void {
     if (this._readOnly) {
-      throw new Error(
-        'KernelRegistry: Registry is read-only after reaching READY.',
-      );
+      throw new Error('KernelRegistry: Registry is read-only after reaching READY.');
     }
     if (this._subsystems.has(id)) {
-      throw new Error(
-        `KernelRegistry: Subsystem with ID "${id}" is already registered.`,
-      );
+      throw new Error(`KernelRegistry: Subsystem with ID "${id}" is already registered.`);
     }
     this._subsystems.set(id, subsystem);
   }

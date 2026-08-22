@@ -70,73 +70,70 @@ class CustomTypeConverter implements CustomConverter {
 }
 
 test('Validation & Request Binding Package', async (t) => {
-  await t.test(
-    'Extraction and conversion of multiple sources and primitive types',
-    async () => {
-      const builder = new BindingBuilder();
-      builder.registry.register({
-        controllerId: 'UserController',
-        actionName: 'getProfile',
-        parameters: [
-          new BindingMetadata({
-            source: BindingSource.ROUTE,
-            parameterName: 'id',
-            targetType: 'number',
-            required: true,
-          }),
-          new BindingMetadata({
-            source: BindingSource.QUERY,
-            parameterName: 'active',
-            targetType: 'boolean',
-            required: true,
-          }),
-          new BindingMetadata({
-            source: BindingSource.HEADER,
-            parameterName: 'x-version',
-            targetType: 'string',
-          }),
-          new BindingMetadata({
-            source: BindingSource.COOKIE,
-            parameterName: 'session-id',
-            targetType: 'string',
-          }),
-          new BindingMetadata({
-            source: BindingSource.BODY,
-            parameterName: 'tags',
-            targetType: 'string[]',
-          }),
-        ],
-      });
+  await t.test('Extraction and conversion of multiple sources and primitive types', async () => {
+    const builder = new BindingBuilder();
+    builder.registry.register({
+      controllerId: 'UserController',
+      actionName: 'getProfile',
+      parameters: [
+        new BindingMetadata({
+          source: BindingSource.ROUTE,
+          parameterName: 'id',
+          targetType: 'number',
+          required: true,
+        }),
+        new BindingMetadata({
+          source: BindingSource.QUERY,
+          parameterName: 'active',
+          targetType: 'boolean',
+          required: true,
+        }),
+        new BindingMetadata({
+          source: BindingSource.HEADER,
+          parameterName: 'x-version',
+          targetType: 'string',
+        }),
+        new BindingMetadata({
+          source: BindingSource.COOKIE,
+          parameterName: 'session-id',
+          targetType: 'string',
+        }),
+        new BindingMetadata({
+          source: BindingSource.BODY,
+          parameterName: 'tags',
+          targetType: 'string[]',
+        }),
+      ],
+    });
 
-      const binder = new RequestBinder(builder.build());
-      const request = new DummyRequest({
-        parameters: { id: '42' },
-        query: { active: 'true' },
-        headers: { 'x-version': '1.0.0' },
-        cookies: { 'session-id': 'session-xyz' },
-        body: { tags: 'admin,moderator' },
-      });
+    const binder = new RequestBinder(builder.build());
+    const request = new DummyRequest({
+      parameters: { id: '42' },
+      query: { active: 'true' },
+      headers: { 'x-version': '1.0.0' },
+      cookies: { 'session-id': 'session-xyz' },
+      body: { tags: 'admin,moderator' },
+    });
 
-      const context: ActionContext = {
-        request,
-        controllerDescriptor: { id: 'UserController' },
-        actionDescriptor: { metadata: { actionName: 'getProfile' } },
-      } as unknown as ActionContext;
+    const context: ActionContext = {
+      request,
+      controllerDescriptor: { id: 'UserController' },
+      actionDescriptor: { metadata: { actionName: 'getProfile' } },
+    } as unknown as ActionContext;
 
-      const args = await binder.bind(context);
+    const args = await binder.bind(context);
 
-      assert.deepStrictEqual(args.positionals, [
-        42,
-        true,
-        '1.0.0',
-        'session-xyz',
-        ['admin', 'moderator'],
-      ]);
-      assert.strictEqual(args.named.id, 42);
-      assert.strictEqual(args.named.active, true);
-      assert.strictEqual(args.rawValues.id, '42');
-    },
-  );
+    assert.deepStrictEqual(args.positionals, [
+      42,
+      true,
+      '1.0.0',
+      'session-xyz',
+      ['admin', 'moderator'],
+    ]);
+    assert.strictEqual(args.named.id, 42);
+    assert.strictEqual(args.named.active, true);
+    assert.strictEqual(args.rawValues.id, '42');
+  });
 
   await t.test('Default values applied on missing parameter', async () => {
     const builder = new BindingBuilder();

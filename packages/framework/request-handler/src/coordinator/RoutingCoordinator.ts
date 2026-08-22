@@ -15,10 +15,7 @@ export class RoutingCoordinator implements PipelineStage {
   public async execute(context: RequestExecutionContext): Promise<void> {
     context.cancellation.throwIfCancelled();
 
-    const match = this._router.resolve(
-      context.request.method as RouteMethod,
-      context.request.path,
-    );
+    const match = this._router.resolve(context.request.method as RouteMethod, context.request.path);
     if (match) {
       context.route = match.route;
       context.parameters = Object.freeze({ ...match.parameters });

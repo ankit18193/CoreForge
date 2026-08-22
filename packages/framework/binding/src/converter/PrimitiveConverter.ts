@@ -30,7 +30,13 @@ export class PrimitiveConverter {
           targetType,
         });
       }
-      return new ConversionResult({ success: true, value: num, error: null, sourceType, targetType });
+      return new ConversionResult({
+        success: true,
+        value: num,
+        error: null,
+        sourceType,
+        targetType,
+      });
     }
 
     if (targetType === 'boolean') {

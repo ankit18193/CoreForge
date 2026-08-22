@@ -135,46 +135,40 @@ test('Request Scope & Dependency Resolution Package', async (t) => {
     assert.strictEqual(scope.state, ScopeState.DISPOSED);
   });
 
-  await t.test(
-    'Disposal Timeout - hanging service triggers DisposalTimeoutError',
-    async () => {
-      const localContainer = new Container();
-      localContainer.register({
-        token: 'HangingDisposable',
-        useClass: HangingDisposable,
-        lifetime: ServiceLifetime.SCOPED,
-      });
+  await t.test('Disposal Timeout - hanging service triggers DisposalTimeoutError', async () => {
+    const localContainer = new Container();
+    localContainer.register({
+      token: 'HangingDisposable',
+      useClass: HangingDisposable,
+      lifetime: ServiceLifetime.SCOPED,
+    });
 
-      const builder = new RequestScopeBuilder()
-        .setRootContainer(localContainer)
-        .setDisposalTimeoutMs(50);
+    const builder = new RequestScopeBuilder()
+      .setRootContainer(localContainer)
+      .setDisposalTimeoutMs(50);
 
-      const factory = new RequestScopeFactory(builder.build(), eventBus);
-      const scope = await factory.createScope();
-      scope.resolve('HangingDisposable');
+    const factory = new RequestScopeFactory(builder.build(), eventBus);
+    const scope = await factory.createScope();
+    scope.resolve('HangingDisposable');
 
-      await assert.rejects(async () => {
-        await scope.dispose();
-      }, DisposalTimeoutError);
-
-      assert.strictEqual(scope.state, ScopeState.FAILED);
-    },
-  );
-
-  await t.test(
-    'Memory Safety - disposed scope throws ScopeExecutionError on resolve',
-    async () => {
-      const builder = new RequestScopeBuilder().setRootContainer(rootContainer);
-      const factory = new RequestScopeFactory(builder.build(), eventBus);
-
-      const scope = await factory.createScope();
+    await assert.rejects(async () => {
       await scope.dispose();
+    }, DisposalTimeoutError);
 
-      assert.throws(() => {
-        scope.resolve('ServiceA');
-      }, ScopeExecutionError);
-    },
-  );
+    assert.strictEqual(scope.state, ScopeState.FAILED);
+  });
+
+  await t.test('Memory Safety - disposed scope throws ScopeExecutionError on resolve', async () => {
+    const builder = new RequestScopeBuilder().setRootContainer(rootContainer);
+    const factory = new RequestScopeFactory(builder.build(), eventBus);
+
+    const scope = await factory.createScope();
+    await scope.dispose();
+
+    assert.throws(() => {
+      scope.resolve('ServiceA');
+    }, ScopeExecutionError);
+  });
 
   await t.test('Events publishing - created and disposed events are triggered', async () => {
     const bus = new DummyEventBus();

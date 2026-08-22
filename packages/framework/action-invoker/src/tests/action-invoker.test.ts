@@ -11,7 +11,6 @@ import {
 } from '@coreforge/controllers';
 import { RequestScopeBuilder, RequestScopeFactory } from '@coreforge/request-scope';
 
-
 import {
   ControllerResolutionError,
   ActionNotFoundError,
@@ -133,8 +132,9 @@ test('Action Invocation Engine Package', async (t) => {
         tags: [],
         createdAt: Date.now(),
       },
-      handler: ((c: TestController) =>
-        c.throwingAction) as unknown as (...args: unknown[]) => unknown,
+      handler: ((c: TestController) => c.throwingAction) as unknown as (
+        ...args: unknown[]
+      ) => unknown,
       parameterCount: 0,
       async: false,
       createdAt: Date.now(),
@@ -299,35 +299,32 @@ test('Action Invocation Engine Package', async (t) => {
     await scope.dispose();
   });
 
-  await t.test(
-    'Diagnostics Snapshot - counts successes, average execution durations',
-    async () => {
-      const invokerBuilder = new ActionInvokerBuilder().setControllerRegistry(controllerRegistry);
-      const invoker = new ActionInvoker(invokerBuilder.build());
+  await t.test('Diagnostics Snapshot - counts successes, average execution durations', async () => {
+    const invokerBuilder = new ActionInvokerBuilder().setControllerRegistry(controllerRegistry);
+    const invoker = new ActionInvoker(invokerBuilder.build());
 
-      const scope = await scopeFactory.createScope();
+    const scope = await scopeFactory.createScope();
 
-      await invoker.invoke(
-        descriptor.instance,
-        'syncAction',
-        { positionals: [1], named: {}, rawValues: {} },
-        scope,
-      );
-      await invoker.invoke(
-        descriptor.instance,
-        'asyncAction',
-        { positionals: [2], named: {}, rawValues: {} },
-        scope,
-      );
+    await invoker.invoke(
+      descriptor.instance,
+      'syncAction',
+      { positionals: [1], named: {}, rawValues: {} },
+      scope,
+    );
+    await invoker.invoke(
+      descriptor.instance,
+      'asyncAction',
+      { positionals: [2], named: {}, rawValues: {} },
+      scope,
+    );
 
-      const snap = invoker.diagnostics.getSnapshot();
-      assert.strictEqual(snap.totalInvocations, 2);
-      assert.strictEqual(snap.successfulInvocations, 2);
-      assert.strictEqual(snap.failedInvocations, 0);
+    const snap = invoker.diagnostics.getSnapshot();
+    assert.strictEqual(snap.totalInvocations, 2);
+    assert.strictEqual(snap.successfulInvocations, 2);
+    assert.strictEqual(snap.failedInvocations, 0);
 
-      await scope.dispose();
-    },
-  );
+    await scope.dispose();
+  });
 
   await t.test(
     'Stress Scale Test - 1000 parallel invocations work with isolated scopes',

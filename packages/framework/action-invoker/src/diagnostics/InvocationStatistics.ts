@@ -44,7 +44,9 @@ export class InvocationStatistics {
   }
 
   public get averageExecutionTime(): number {
-    return this._successfulInvocations > 0 ? this._totalExecutionTime / this._successfulInvocations : 0;
+    return this._successfulInvocations > 0
+      ? this._totalExecutionTime / this._successfulInvocations
+      : 0;
   }
 
   public get slowestActionName(): string {

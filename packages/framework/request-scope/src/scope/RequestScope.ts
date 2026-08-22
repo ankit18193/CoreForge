@@ -98,11 +98,7 @@ export class RequestScope implements IRequestScope {
       await this._disposer.dispose([...instances]);
 
       this._lifecycle.transitionTo(ScopeState.DISPOSED);
-      this._diagnostics.recordScopeDisposal(
-        true,
-        Date.now() - start,
-        Date.now() - this._createdAt,
-      );
+      this._diagnostics.recordScopeDisposal(true, Date.now() - start, Date.now() - this._createdAt);
 
       await this._eventBus.publish({
         type: 'ScopeDisposedEvent',

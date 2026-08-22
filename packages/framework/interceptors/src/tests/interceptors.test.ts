@@ -179,35 +179,32 @@ test('Interceptor Pipeline Package', async (t) => {
     },
   );
 
-  await t.test(
-    'Lifecycle & Diagnostics - statistics evaluate state and executions',
-    async () => {
-      const list: string[] = [];
-      const builder = new InterceptorBuilder().register(
-        'I1',
-        new TrackingInterceptor('I1', list),
-        InterceptorScope.GLOBAL,
-      );
+  await t.test('Lifecycle & Diagnostics - statistics evaluate state and executions', async () => {
+    const list: string[] = [];
+    const builder = new InterceptorBuilder().register(
+      'I1',
+      new TrackingInterceptor('I1', list),
+      InterceptorScope.GLOBAL,
+    );
 
-      const manager = new InterceptorManager(builder.build());
-      assert.strictEqual(manager.state, InterceptorState.READY);
+    const manager = new InterceptorManager(builder.build());
+    assert.strictEqual(manager.state, InterceptorState.READY);
 
-      const context: InterceptorContext = {
-        requestScope: new DummyRequestScope(),
-        controller: new DummyController(),
-        action: 'testAction',
-      };
+    const context: InterceptorContext = {
+      requestScope: new DummyRequestScope(),
+      controller: new DummyController(),
+      action: 'testAction',
+    };
 
-      await manager.execute(context, {
-        proceed: async () => new InterceptionResult('ok'),
-      });
+    await manager.execute(context, {
+      proceed: async () => new InterceptionResult('ok'),
+    });
 
-      const snap = manager.diagnostics.getSnapshot();
-      assert.strictEqual(snap.totalInterceptions, 1);
-      assert.strictEqual(snap.totalExecutions, 1);
-      assert.strictEqual(snap.executionCounts['TrackingInterceptor'], 1);
-    },
-  );
+    const snap = manager.diagnostics.getSnapshot();
+    assert.strictEqual(snap.totalInterceptions, 1);
+    assert.strictEqual(snap.totalExecutions, 1);
+    assert.strictEqual(snap.executionCounts['TrackingInterceptor'], 1);
+  });
 
   await t.test('Immutability - context and configuration are frozen', async () => {
     const builder = new InterceptorBuilder();

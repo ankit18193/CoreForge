@@ -42,15 +42,9 @@ export class PluginInitializer {
       await plugin.initialize(sandboxedContext);
       this._initializedPlugins.add(id);
 
-      this._context.diagnostics.recordInitialization(
-        profiler.durationMs,
-        true,
-      );
+      this._context.diagnostics.recordInitialization(profiler.durationMs, true);
     } catch (err) {
-      this._context.diagnostics.recordInitialization(
-        profiler.durationMs,
-        false,
-      );
+      this._context.diagnostics.recordInitialization(profiler.durationMs, false);
       throw err;
     }
   }

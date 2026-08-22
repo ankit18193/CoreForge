@@ -1,8 +1,5 @@
 import { RegistrationGraph } from './RegistrationGraph';
-import {
-  RegistrationOrderingError,
-  ScannerValidationError,
-} from '../errors/ScannerErrors';
+import { RegistrationOrderingError, ScannerValidationError } from '../errors/ScannerErrors';
 
 export class RegistrationGraphValidator {
   public validate(graph: RegistrationGraph): void {

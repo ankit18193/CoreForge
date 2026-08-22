@@ -2,14 +2,16 @@ import * as assert from 'node:assert';
 import { test } from 'node:test';
 
 import { DiscoveryBuilder, DiscoveryEngine, DependencyGraph } from '@coreforge/discovery';
-import { MetadataBuilder, MetadataRegistry, MetadataType, MetadataDescriptor } from '@coreforge/metadata';
+import {
+  MetadataBuilder,
+  MetadataRegistry,
+  MetadataType,
+  MetadataDescriptor,
+} from '@coreforge/metadata';
 
 import { CompilerBuilder } from '../compiler/CompilerBuilder';
 import { ModuleCompiler } from '../compiler/ModuleCompiler';
-import {
-  CompilationStateError,
-  CompilationValidationError,
-} from '../errors/CompilerErrors';
+import { CompilationStateError, CompilationValidationError } from '../errors/CompilerErrors';
 import { CompilerState } from '../lifecycle/CompilerState';
 import { ApplicationModel } from '../model/ApplicationModel';
 
@@ -41,7 +43,13 @@ test('Module Compiler Package', async (t) => {
         { id: 'ctrl-1', type: MetadataType.CONTROLLER, parentId: 'mod-1', name: 'Controller1' },
         { id: 'prov-1', type: MetadataType.PROVIDER, parentId: 'mod-1', serviceToken: 'Service1' },
         { id: 'act-1', type: MetadataType.ACTION, parentId: 'ctrl-1', name: 'Action1' },
-        { id: 'route-1', type: MetadataType.ROUTE, parentId: 'act-1', path: '/users', method: 'GET' },
+        {
+          id: 'route-1',
+          type: MetadataType.ROUTE,
+          parentId: 'act-1',
+          path: '/users',
+          method: 'GET',
+        },
       ],
     );
 
@@ -89,8 +97,20 @@ test('Module Compiler Package', async (t) => {
       [
         { id: 'ctrl-1', type: MetadataType.CONTROLLER, parentId: 'mod-1', name: 'Controller1' },
         { id: 'act-1', type: MetadataType.ACTION, parentId: 'ctrl-1', name: 'Action1' },
-        { id: 'route-1', type: MetadataType.ROUTE, parentId: 'act-1', path: '/users', method: 'GET' },
-        { id: 'route-2', type: MetadataType.ROUTE, parentId: 'act-1', path: '/users', method: 'GET' },
+        {
+          id: 'route-1',
+          type: MetadataType.ROUTE,
+          parentId: 'act-1',
+          path: '/users',
+          method: 'GET',
+        },
+        {
+          id: 'route-2',
+          type: MetadataType.ROUTE,
+          parentId: 'act-1',
+          path: '/users',
+          method: 'GET',
+        },
       ],
     );
 
@@ -160,9 +180,11 @@ test('Module Compiler Package', async (t) => {
     const compiler = new ModuleCompiler(builder.build());
 
     assert.throws(() => {
-      ((compiler as unknown as Record<string, unknown>)._lifecycle as {
-        transitionTo(state: CompilerState): void;
-      }).transitionTo(CompilerState.COMPILED);
+      (
+        (compiler as unknown as Record<string, unknown>)._lifecycle as {
+          transitionTo(state: CompilerState): void;
+        }
+      ).transitionTo(CompilerState.COMPILED);
     }, CompilationStateError);
   });
 });

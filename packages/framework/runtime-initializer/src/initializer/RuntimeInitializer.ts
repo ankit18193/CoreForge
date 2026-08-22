@@ -36,9 +36,7 @@ export class RuntimeInitializer implements IRuntimeInitializer {
     return this._config;
   }
 
-  public async initialize(
-    assembly: RuntimeAssembly,
-  ): Promise<InitializationResult> {
+  public async initialize(assembly: RuntimeAssembly): Promise<InitializationResult> {
     const totalProfiler = new RuntimeInitializationProfiler();
     totalProfiler.start();
 

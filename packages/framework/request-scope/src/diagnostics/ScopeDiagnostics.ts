@@ -48,12 +48,14 @@ export class ScopeDiagnostics {
   }
 
   public getSnapshot(): ScopeDiagnosticsSnapshot {
-    const avgLifetime = this._scopesDisposed > 0 ? this._totalScopeLifetime / this._scopesDisposed : 0;
+    const avgLifetime =
+      this._scopesDisposed > 0 ? this._totalScopeLifetime / this._scopesDisposed : 0;
     const avgResolution =
       this._scopedServicesResolved > 0
         ? this._totalResolutionTime / this._scopedServicesResolved
         : 0;
-    const avgDisposal = this._scopesDisposed > 0 ? this._totalDisposalDuration / this._scopesDisposed : 0;
+    const avgDisposal =
+      this._scopesDisposed > 0 ? this._totalDisposalDuration / this._scopesDisposed : 0;
 
     return {
       scopesCreated: this._scopesCreated,

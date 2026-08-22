@@ -18,12 +18,38 @@ test('Module Discovery Engine Package', async (t) => {
     const metadata = new MetadataRegistry(metadataBuilder.build());
 
     const m = { id: 'mod-1', type: MetadataType.MODULE, name: 'Module1', dependencies: [] };
-    const c = { id: 'ctrl-1', type: MetadataType.CONTROLLER, parentId: 'mod-1', name: 'Controller1' };
-    const p = { id: 'prov-1', type: MetadataType.PROVIDER, parentId: 'mod-1', serviceToken: 'Service1' };
+    const c = {
+      id: 'ctrl-1',
+      type: MetadataType.CONTROLLER,
+      parentId: 'mod-1',
+      name: 'Controller1',
+    };
+    const p = {
+      id: 'prov-1',
+      type: MetadataType.PROVIDER,
+      parentId: 'mod-1',
+      serviceToken: 'Service1',
+    };
     const act = { id: 'act-1', type: MetadataType.ACTION, parentId: 'ctrl-1', name: 'Action1' };
-    const r = { id: 'route-1', type: MetadataType.ROUTE, parentId: 'act-1', path: '/users', method: 'GET' };
-    const mid = { id: 'mid-1', type: MetadataType.MIDDLEWARE, parentId: 'ctrl-1', middlewareName: 'Logger' };
-    const int = { id: 'int-1', type: MetadataType.INTERCEPTOR, parentId: 'ctrl-1', interceptorName: 'Timer' };
+    const r = {
+      id: 'route-1',
+      type: MetadataType.ROUTE,
+      parentId: 'act-1',
+      path: '/users',
+      method: 'GET',
+    };
+    const mid = {
+      id: 'mid-1',
+      type: MetadataType.MIDDLEWARE,
+      parentId: 'ctrl-1',
+      middlewareName: 'Logger',
+    };
+    const int = {
+      id: 'int-1',
+      type: MetadataType.INTERCEPTOR,
+      parentId: 'ctrl-1',
+      interceptorName: 'Timer',
+    };
     const sec = { id: 'sec-1', type: MetadataType.SECURITY, parentId: 'ctrl-1', roles: ['ADMIN'] };
 
     metadata.register(m);
@@ -120,9 +146,11 @@ test('Module Discovery Engine Package', async (t) => {
     const engine = new DiscoveryEngine(builder.build());
 
     assert.throws(() => {
-      ((engine as unknown as Record<string, unknown>)._lifecycle as {
-        transitionTo(state: DiscoveryState): void;
-      }).transitionTo(DiscoveryState.READY);
+      (
+        (engine as unknown as Record<string, unknown>)._lifecycle as {
+          transitionTo(state: DiscoveryState): void;
+        }
+      ).transitionTo(DiscoveryState.READY);
     }, DiscoveryStateError);
   });
 });

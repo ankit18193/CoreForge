@@ -1,6 +1,9 @@
 import { MiddlewareExecutionContext } from './MiddlewareExecutionContext';
 import { MiddlewareState } from './MiddlewareState';
-import { MiddlewareDiagnostics, MiddlewareDiagnosticsSnapshot } from '../diagnostics/MiddlewareDiagnostics';
+import {
+  MiddlewareDiagnostics,
+  MiddlewareDiagnosticsSnapshot,
+} from '../diagnostics/MiddlewareDiagnostics';
 import { MiddlewareExecutionError } from '../errors/MiddlewareErrors';
 import { MiddlewareResult } from '../execution/MiddlewareResult';
 import { MiddlewareExecutor } from '../executor/MiddlewareExecutor';
@@ -16,10 +19,7 @@ export class MiddlewarePipeline {
   private readonly _diagnostics: MiddlewareDiagnostics;
   private readonly _executor: MiddlewareExecutor;
 
-  constructor(
-    registry: MiddlewareRegistry,
-    lifecycleManager: MiddlewareLifecycleManager,
-  ) {
+  constructor(registry: MiddlewareRegistry, lifecycleManager: MiddlewareLifecycleManager) {
     this._registry = registry;
     this._lifecycleManager = lifecycleManager;
     this._diagnostics = new MiddlewareDiagnostics(this._profiler, this._registry);

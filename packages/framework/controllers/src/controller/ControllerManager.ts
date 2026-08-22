@@ -1,4 +1,8 @@
-import { ActionContext, Controller, ControllerExecutor as IControllerExecutor } from '@coreforge/contracts';
+import {
+  ActionContext,
+  Controller,
+  ControllerExecutor as IControllerExecutor,
+} from '@coreforge/contracts';
 
 import { ControllerFactory } from './ControllerFactory';
 import { ControllerDiagnostics } from '../diagnostics/ControllerDiagnostics';

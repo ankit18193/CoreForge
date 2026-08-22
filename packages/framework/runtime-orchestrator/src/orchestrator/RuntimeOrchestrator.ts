@@ -44,9 +44,7 @@ export class RuntimeOrchestrator implements IRuntimeOrchestrator {
     return this._registry;
   }
 
-  public async start(
-    runtime: InitializedRuntime,
-  ): Promise<RuntimeExecutionResult> {
+  public async start(runtime: InitializedRuntime): Promise<RuntimeExecutionResult> {
     if (
       this._lifecycle.state === RuntimeExecutionState.STARTING ||
       this._lifecycle.state === RuntimeExecutionState.RUNNING
@@ -101,10 +99,7 @@ export class RuntimeOrchestrator implements IRuntimeOrchestrator {
       this._registry.getActiveComponents().length,
       supervisor.failedComponentsCount,
     );
-    this._diagnostics.recordHealth(
-      monitor.healthCheckCount,
-      monitor.lastHealthCheckTimestamp,
-    );
+    this._diagnostics.recordHealth(monitor.healthCheckCount, monitor.lastHealthCheckTimestamp);
 
     return result;
   }

@@ -25,7 +25,9 @@ export class RequestScopeBuilder {
     return this;
   }
 
-  public registerScopedInitializer(initializer: (scope: RequestScope) => Promise<void> | void): this {
+  public registerScopedInitializer(
+    initializer: (scope: RequestScope) => Promise<void> | void,
+  ): this {
     this._initializers.push(initializer);
     return this;
   }

@@ -74,10 +74,7 @@ export class ScopedContainer implements Container {
     }
   }
 
-  private instantiate<T>(
-    descriptor: ServiceDescriptor,
-    context: ScopeResolutionContext,
-  ): T {
+  private instantiate<T>(descriptor: ServiceDescriptor, context: ScopeResolutionContext): T {
     if (descriptor.useValue !== undefined) {
       return descriptor.useValue as T;
     }
@@ -88,9 +85,7 @@ export class ScopedContainer implements Container {
 
     if (descriptor.useClass !== undefined) {
       const depsTokens = (descriptor.dependencies || []) as unknown[];
-      const dependencies = depsTokens.map((depToken) =>
-        this.resolveWithContext(depToken, context),
-      );
+      const dependencies = depsTokens.map((depToken) => this.resolveWithContext(depToken, context));
       return new descriptor.useClass(...dependencies) as T;
     }
 

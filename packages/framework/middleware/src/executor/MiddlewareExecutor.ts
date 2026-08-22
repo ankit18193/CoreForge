@@ -24,9 +24,7 @@ export class MiddlewareExecutor {
 
     const dispatch = async (i: number): Promise<void> => {
       if (i <= index) {
-        throw new MiddlewareExecutionError(
-          'next() called multiple times in middleware pipeline.',
-        );
+        throw new MiddlewareExecutionError('next() called multiple times in middleware pipeline.');
       }
       index = i;
 

@@ -96,10 +96,9 @@ export class StartupExecutor {
     } catch (err: unknown) {
       await rollback.rollback();
       const msg = err instanceof Error ? err.message : String(err);
-      throw new RuntimeStartupError(
-        `StartupExecutor: Startup sequence failed: ${msg}`,
-        { cause: err as Record<string, unknown> },
-      );
+      throw new RuntimeStartupError(`StartupExecutor: Startup sequence failed: ${msg}`, {
+        cause: err as Record<string, unknown>,
+      });
     }
   }
 }

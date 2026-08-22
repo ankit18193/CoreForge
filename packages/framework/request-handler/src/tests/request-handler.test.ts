@@ -252,30 +252,27 @@ test('Request Handler Pipeline Package', async (t) => {
     assert.strictEqual(snapshot.failedRequests, 0);
   });
 
-  await t.test(
-    'Request Cancellation - client cancellation aborts processing',
-    async () => {
-      const builder = new RequestHandlerBuilder()
-        .setRouter(router)
-        .setMiddlewarePipeline(middlewarePipeline)
-        .setControllerManager(controllerManager)
-        .addRouteMapping({
-          method: RouteMethod.GET,
-          path: '/users/async',
-          controllerId: ctrlId,
-          actionName: 'getAsync',
-        });
+  await t.test('Request Cancellation - client cancellation aborts processing', async () => {
+    const builder = new RequestHandlerBuilder()
+      .setRouter(router)
+      .setMiddlewarePipeline(middlewarePipeline)
+      .setControllerManager(controllerManager)
+      .addRouteMapping({
+        method: RouteMethod.GET,
+        path: '/users/async',
+        controllerId: ctrlId,
+        actionName: 'getAsync',
+      });
 
-      const handler = new RequestHandler(builder.build(), services);
-      const request = new DummyRequest('GET', '/users/async');
-      const response = new DummyResponse();
+    const handler = new RequestHandler(builder.build(), services);
+    const request = new DummyRequest('GET', '/users/async');
+    const response = new DummyResponse();
 
-      const handlePromise = handler.handle(request, response);
-      assert.ok(handlePromise);
-      await handlePromise;
-      assert.strictEqual(response.status, 200);
-    },
-  );
+    const handlePromise = handler.handle(request, response);
+    assert.ok(handlePromise);
+    await handlePromise;
+    assert.strictEqual(response.status, 200);
+  });
 
   await t.test('Concurrent request context isolation - 1000 requests', async () => {
     const builder = new RequestHandlerBuilder()

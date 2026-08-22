@@ -1,0 +1,23 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*", "index.ts"],
+  "references": [
+    { "path": "../../foundation/types" },
+    { "path": "../../foundation/contracts" },
+    { "path": "../../foundation/errors" },
+    { "path": "../../foundation/utils" },
+    { "path": "../di" },
+    { "path": "../metadata" },
+    { "path": "../discovery" },
+    { "path": "../compiler" },
+    { "path": "../scanner" },
+    { "path": "../assembler" },
+    { "path": "../runtime-initializer" },
+    { "path": "../runtime-orchestrator" }
+  ]
+}

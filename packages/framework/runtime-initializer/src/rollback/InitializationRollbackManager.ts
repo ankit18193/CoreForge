@@ -7,11 +7,7 @@ export interface RollbackAction {
 export class InitializationRollbackManager {
   private readonly _actions: RollbackAction[] = [];
 
-  public track(
-    id: string,
-    type: string,
-    undo: () => Promise<void> | void,
-  ): void {
+  public track(id: string, type: string, undo: () => Promise<void> | void): void {
     this._actions.push({ id, type, undo });
   }
 

@@ -16,6 +16,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "experimentalDecorators": true,
     "baseUrl": ".",
     "paths": {
       "@coreforge/types": ["packages/foundation/types/src/index.ts"],
@@ -42,6 +43,9 @@
       "@coreforge/interceptors": ["packages/framework/interceptors/src/index.ts"],
       "@coreforge/application": ["packages/framework/application/src/index.ts"],
       "@coreforge/metadata": ["packages/framework/metadata/src/index.ts"],
+      "@coreforge/decorators": ["packages/framework/decorators/src/index.ts"],
+      "@coreforge/di": ["packages/framework/di/src/index.ts"],
+      "@coreforge/request-context": ["packages/framework/request-context/src/index.ts"],
       "@coreforge/discovery": ["packages/framework/discovery/src/index.ts"],
       "@coreforge/compiler": ["packages/framework/compiler/src/index.ts"],
       "@coreforge/scanner": ["packages/framework/scanner/src/index.ts"],

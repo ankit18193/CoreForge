@@ -26,9 +26,7 @@ export class KernelFinalizer {
 
     this._context.registry.makeReadOnly();
 
-    this._diagnostics.recordRegistration(
-      this._context.registry.getAll().length,
-    );
+    this._diagnostics.recordRegistration(this._context.registry.getAll().length);
 
     const builder = new KernelSnapshotBuilder();
     return builder.build(this._context.registry, this._diagnostics);

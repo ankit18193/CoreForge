@@ -10,10 +10,7 @@ import {
   Next,
 } from '@coreforge/contracts';
 
-import {
-  MiddlewareExecutionError,
-  MiddlewareRegistrationError,
-} from '../errors/MiddlewareErrors';
+import { MiddlewareExecutionError, MiddlewareRegistrationError } from '../errors/MiddlewareErrors';
 import { PipelineTarget } from '../executor/PipelineTarget';
 import { MiddlewareExecutionContext } from '../pipeline/MiddlewareExecutionContext';
 import { MiddlewarePriority } from '../pipeline/MiddlewarePriority';
@@ -116,45 +113,42 @@ test('Middleware Pipeline Framework Package', async (t) => {
     assert.strictEqual(pipeline.state, MiddlewareState.READY);
   });
 
-  await t.test(
-    'Priority and Scope execution ordering - Global ➔ Group ➔ Route',
-    async () => {
-      const order: string[] = [];
-      const builder = new PipelineBuilder();
+  await t.test('Priority and Scope execution ordering - Global ➔ Group ➔ Route', async () => {
+    const order: string[] = [];
+    const builder = new PipelineBuilder();
 
-      builder.useGlobal(new OrderLoggerMiddleware('g2', order), MiddlewarePriority.NORMAL);
-      builder.useGlobal(new OrderLoggerMiddleware('g1', order), MiddlewarePriority.HIGH);
-      builder.useGroup('api', new OrderLoggerMiddleware('group', order));
-      builder.useRoute('/users/:id', new OrderLoggerMiddleware('route', order));
+    builder.useGlobal(new OrderLoggerMiddleware('g2', order), MiddlewarePriority.NORMAL);
+    builder.useGlobal(new OrderLoggerMiddleware('g1', order), MiddlewarePriority.HIGH);
+    builder.useGroup('api', new OrderLoggerMiddleware('group', order));
+    builder.useRoute('/users/:id', new OrderLoggerMiddleware('route', order));
 
-      const pipeline = builder.build();
-      const context = createContext();
+    const pipeline = builder.build();
+    const context = createContext();
 
-      const target: PipelineTarget = {
-        async execute() {
-          order.push('target');
-        },
-      };
+    const target: PipelineTarget = {
+      async execute() {
+        order.push('target');
+      },
+    };
 
-      const result = await pipeline.execute(context, target, {
-        groupName: 'api',
-        routePath: '/users/:id',
-      });
+    const result = await pipeline.execute(context, target, {
+      groupName: 'api',
+      routePath: '/users/:id',
+    });
 
-      assert.strictEqual(result.completed, true);
-      assert.deepStrictEqual(order, [
-        'g1-start',
-        'g2-start',
-        'group-start',
-        'route-start',
-        'target',
-        'route-end',
-        'group-end',
-        'g2-end',
-        'g1-end',
-      ]);
-    },
-  );
+    assert.strictEqual(result.completed, true);
+    assert.deepStrictEqual(order, [
+      'g1-start',
+      'g2-start',
+      'group-start',
+      'route-start',
+      'target',
+      'route-end',
+      'group-end',
+      'g2-end',
+      'g1-end',
+    ]);
+  });
 
   await t.test(
     'Double Next Prevention - calling next() twice throws MiddlewareExecutionError',

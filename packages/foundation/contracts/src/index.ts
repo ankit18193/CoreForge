@@ -152,11 +152,7 @@ export interface Controller {}
 export interface ActionContext {}
 
 export interface ControllerExecutor {
-  execute(
-    controller: Controller,
-    action: string,
-    context: ActionContext,
-  ): Promise<unknown>;
+  execute(controller: Controller, action: string, context: ActionContext): Promise<unknown>;
 }
 
 export interface RequestHandler {
@@ -196,7 +192,7 @@ export interface Disposable {
 
 export interface RequestScope {
   readonly id: string;
-  resolve<T>(token: unknown): T;
+  resolve<T>(token: unknown): T | Promise<T>;
   dispose(): Promise<void>;
 }
 
@@ -266,17 +262,11 @@ export interface InterceptorContext {
 }
 
 export interface Interceptor {
-  intercept(
-    context: InterceptorContext,
-    next: NextInvocation,
-  ): Promise<InterceptionResult>;
+  intercept(context: InterceptorContext, next: NextInvocation): Promise<InterceptionResult>;
 }
 
 export interface InterceptorManager {
-  execute(
-    context: InterceptorContext,
-    next: NextInvocation,
-  ): Promise<InterceptionResult>;
+  execute(context: InterceptorContext, next: NextInvocation): Promise<InterceptionResult>;
 }
 
 export interface Application {
@@ -300,6 +290,14 @@ export interface MetadataDescriptor {
   readonly id: string;
   readonly type: MetadataType;
   readonly parentId?: string | undefined;
+}
+
+export interface DecoratorMetadata {
+  readonly id: string;
+  readonly type: MetadataType;
+  readonly target: string;
+  readonly parentId?: string | undefined;
+  readonly properties: Readonly<Record<string, unknown>>;
 }
 
 export interface MetadataRegistry {
@@ -384,9 +382,7 @@ export interface InitializationResult {
 }
 
 export interface RuntimeInitializer {
-  initialize(
-    assembly: RuntimeAssembly,
-  ): Promise<InitializationResult>;
+  initialize(assembly: RuntimeAssembly): Promise<InitializationResult>;
 }
 
 export interface RuntimeExecutionResult {
@@ -438,4 +434,68 @@ export interface KernelSnapshot {
 
 export interface FrameworkKernel {
   initialize(): Promise<KernelSnapshot>;
+}
+
+// Dependency Injection & Runtime Container Contracts
+export type Constructor<T = unknown> = new (...args: never[]) => T;
+export type AbstractConstructor<T = unknown> = abstract new (...args: never[]) => T;
+
+export type InjectionToken<T = unknown> =
+  string | symbol | Constructor<T> | AbstractConstructor<T> | ((...args: never[]) => T);
+
+export type ProviderScope = 'SINGLETON' | 'REQUEST' | 'TRANSIENT';
+
+export interface PropertyInjection {
+  readonly propertyKey: string | symbol;
+  readonly token: InjectionToken;
+}
+
+export interface ProviderDescriptor<T = unknown> {
+  readonly token: InjectionToken<T>;
+  readonly useClass?: Constructor<T> | undefined;
+  readonly useValue?: T | undefined;
+  readonly useFactory?: ((...args: unknown[]) => T | Promise<T>) | undefined;
+  readonly dependencies?: readonly InjectionToken[] | undefined;
+  readonly propertyInjections?: readonly PropertyInjection[] | undefined;
+  readonly scope: ProviderScope;
+}
+
+export interface DependencyContainer {
+  resolve<T>(token: InjectionToken<T>): Promise<T>;
+  register<T>(provider: ProviderDescriptor<T>): void;
+}
+
+// Request Context & Scope Engine Contracts
+export interface RequestContextOptions {
+  readonly id?: string | undefined;
+  readonly correlationId?: string | undefined;
+  readonly traceId?: string | undefined;
+  readonly timeoutMs?: number | undefined;
+  readonly signal?: AbortSignal | undefined;
+  readonly attributes?: Readonly<Record<string, unknown>> | undefined;
+  readonly parentContext?: RequestContext | undefined;
+}
+
+export interface RequestContext {
+  readonly id: string;
+  readonly correlationId: string;
+  readonly traceId?: string | undefined;
+  readonly startTime: number;
+  readonly signal: AbortSignal;
+  readonly scope: RequestScope;
+  resolve<T>(token: InjectionToken<T>): Promise<T>;
+  get<T>(key: string): T | undefined;
+  set<T>(key: string, value: T): void;
+  has(key: string): boolean;
+  dispose(): Promise<void>;
+}
+
+export interface RequestContextManager {
+  createContext(options?: RequestContextOptions): Promise<RequestContext>;
+  runInContext<R>(
+    options: RequestContextOptions | undefined,
+    fn: (context: RequestContext) => Promise<R>,
+  ): Promise<R>;
+  runInContext<R>(fn: (context: RequestContext) => Promise<R>): Promise<R>;
+  getCurrentContext(): RequestContext | undefined;
 }

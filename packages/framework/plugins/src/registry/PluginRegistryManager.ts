@@ -12,9 +12,7 @@ export class PluginRegistryManager {
 
   public register(desc: PluginDescriptor): void {
     if (this._readOnly) {
-      throw new Error(
-        'PluginRegistryManager: Registry is read-only after startup.',
-      );
+      throw new Error('PluginRegistryManager: Registry is read-only after startup.');
     }
     if (this._registry.registered.has(desc.id)) {
       throw new PluginValidationError(

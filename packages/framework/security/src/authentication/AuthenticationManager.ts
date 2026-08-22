@@ -1,6 +1,5 @@
 import { SecurityContext } from '@coreforge/contracts';
 
-
 import { AuthenticationRegistry } from './AuthenticationRegistry';
 import { AuthenticationResult } from './AuthenticationResult';
 import { Identity } from './Identity';

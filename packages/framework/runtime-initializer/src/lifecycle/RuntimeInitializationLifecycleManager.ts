@@ -9,10 +9,7 @@ export class RuntimeInitializationLifecycleManager {
   }
 
   public transitionTo(target: RuntimeInitializationState): void {
-    const allowed: Record<
-      RuntimeInitializationState,
-      RuntimeInitializationState[]
-    > = {
+    const allowed: Record<RuntimeInitializationState, RuntimeInitializationState[]> = {
       [RuntimeInitializationState.CREATED]: [
         RuntimeInitializationState.PLANNING,
         RuntimeInitializationState.FAILED,
@@ -26,9 +23,7 @@ export class RuntimeInitializationLifecycleManager {
         RuntimeInitializationState.ROLLING_BACK,
         RuntimeInitializationState.FAILED,
       ],
-      [RuntimeInitializationState.ROLLING_BACK]: [
-        RuntimeInitializationState.FAILED,
-      ],
+      [RuntimeInitializationState.ROLLING_BACK]: [RuntimeInitializationState.FAILED],
       [RuntimeInitializationState.READY]: [RuntimeInitializationState.FAILED],
       [RuntimeInitializationState.FAILED]: [],
     };

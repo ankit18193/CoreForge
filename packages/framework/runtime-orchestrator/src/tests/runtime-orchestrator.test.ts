@@ -3,10 +3,7 @@ import { test } from 'node:test';
 
 import { InitializedRuntime } from '@coreforge/contracts';
 
-import {
-  RuntimeExecutionStateError,
-  RuntimeStartupError,
-} from '../errors/RuntimeExecutionErrors';
+import { RuntimeExecutionStateError, RuntimeStartupError } from '../errors/RuntimeExecutionErrors';
 import { RuntimeExecutionState } from '../lifecycle/RuntimeExecutionState';
 import { RuntimeOrchestrator } from '../orchestrator/RuntimeOrchestrator';
 import { RuntimeOrchestratorBuilder } from '../orchestrator/RuntimeOrchestratorBuilder';
@@ -41,43 +38,40 @@ test('Runtime Orchestration Engine Package', async (t) => {
     return res as unknown as InitializedRuntime;
   };
 
-  await t.test(
-    'Successful startup, registry lookup, and diagnostics verification',
-    async () => {
-      const runtime = getMockRuntime({
-        modules: [{ id: 'mod-1', name: 'Module1' }],
-        providers: [{ id: 'prov-1', serviceToken: 'Service1' }],
-      });
+  await t.test('Successful startup, registry lookup, and diagnostics verification', async () => {
+    const runtime = getMockRuntime({
+      modules: [{ id: 'mod-1', name: 'Module1' }],
+      providers: [{ id: 'prov-1', serviceToken: 'Service1' }],
+    });
 
-      const builder = new RuntimeOrchestratorBuilder();
-      const orchestrator = new RuntimeOrchestrator(builder.build());
+    const builder = new RuntimeOrchestratorBuilder();
+    const orchestrator = new RuntimeOrchestrator(builder.build());
 
-      assert.strictEqual(orchestrator.state, RuntimeExecutionState.CREATED);
+    assert.strictEqual(orchestrator.state, RuntimeExecutionState.CREATED);
 
-      const result = await orchestrator.start(runtime);
-      assert.strictEqual(orchestrator.state, RuntimeExecutionState.RUNNING);
-      assert.strictEqual(result.started, true);
+    const result = await orchestrator.start(runtime);
+    assert.strictEqual(orchestrator.state, RuntimeExecutionState.RUNNING);
+    assert.strictEqual(result.started, true);
 
-      assert.ok(orchestrator.registry.has('mod-1'));
-      assert.ok(orchestrator.registry.has('prov-1'));
-      assert.ok(orchestrator.registry.has('http-server'));
+    assert.ok(orchestrator.registry.has('mod-1'));
+    assert.ok(orchestrator.registry.has('prov-1'));
+    assert.ok(orchestrator.registry.has('http-server'));
 
-      assert.throws(() => {
-        orchestrator.registry.register('new-node', {});
-      });
+    assert.throws(() => {
+      orchestrator.registry.register('new-node', {});
+    });
 
-      const snap = orchestrator.diagnostics.getSnapshot();
-      assert.strictEqual(snap.activeComponentCount, 3);
-      assert.strictEqual(snap.failedComponentCount, 0);
-      assert.strictEqual(snap.healthCheckCount, 1);
+    const snap = orchestrator.diagnostics.getSnapshot();
+    assert.strictEqual(snap.activeComponentCount, 3);
+    assert.strictEqual(snap.failedComponentCount, 0);
+    assert.strictEqual(snap.healthCheckCount, 1);
 
-      await orchestrator.stop();
-      assert.strictEqual(orchestrator.state, RuntimeExecutionState.STOPPED);
+    await orchestrator.stop();
+    assert.strictEqual(orchestrator.state, RuntimeExecutionState.STOPPED);
 
-      await orchestrator.stop();
-      assert.strictEqual(orchestrator.state, RuntimeExecutionState.STOPPED);
-    },
-  );
+    await orchestrator.stop();
+    assert.strictEqual(orchestrator.state, RuntimeExecutionState.STOPPED);
+  });
 
   await t.test('Startup failures trigger automatic rollback', async () => {
     const throwingModule = {

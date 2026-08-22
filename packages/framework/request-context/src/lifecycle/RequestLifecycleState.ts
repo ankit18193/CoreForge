@@ -1,0 +1,8 @@
+export enum RequestLifecycleState {
+  INITIALIZING = 'INITIALIZING',
+  ACTIVE = 'ACTIVE',
+  COMPLETING = 'COMPLETING',
+  DISPOSING = 'DISPOSING',
+  DISPOSED = 'DISPOSED',
+  FAILED = 'FAILED',
+}

@@ -22,15 +22,14 @@ export class RequestBinder implements IRequestBinder {
 
   constructor(
     config: BindingConfiguration,
-    customExtractors?: ReadonlyMap<unknown, { extract(request: HttpRequest, name: string): unknown }>,
+    customExtractors?: ReadonlyMap<
+      unknown,
+      { extract(request: HttpRequest, name: string): unknown }
+    >,
   ) {
     this._config = config;
     const validator = new Validator(config.validationPipeline);
-    this._coordinator = new BindingCoordinator(
-      config.typeConverter,
-      validator,
-      this._diagnostics,
-    );
+    this._coordinator = new BindingCoordinator(config.typeConverter, validator, this._diagnostics);
 
     if (customExtractors) {
       for (const [source, extractor] of customExtractors.entries()) {
@@ -63,8 +62,7 @@ export class RequestBinder implements IRequestBinder {
 
     const ctrlDesc = ctxRecord.controllerDescriptor as { id: string } | undefined;
     const actionDesc = ctxRecord.actionDescriptor as
-      | { metadata: { actionName: string } }
-      | undefined;
+      { metadata: { actionName: string } } | undefined;
 
     if (!ctrlDesc || !actionDesc) {
       throw new BindingExecutionError(

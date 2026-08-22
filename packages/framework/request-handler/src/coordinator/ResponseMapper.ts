@@ -12,8 +12,7 @@ export class ResponseMapper {
 
   public map(context: RequestExecutionContext): RequestResult {
     const ctrlResult = context.diagnostics.controllerResult as
-      | { success: boolean; returnedValue: unknown; exception: unknown }
-      | undefined;
+      { success: boolean; returnedValue: unknown; exception: unknown } | undefined;
 
     if (!ctrlResult) {
       if (context.diagnostics.middlewareTerminatedEarly) {

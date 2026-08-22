@@ -8,7 +8,12 @@ import {
 interface ScannedApplicationModel {
   readonly modules: readonly { id: string; name: string; dependencies: readonly string[] }[];
   readonly controllers: readonly { id: string; name: string; parentId: string }[];
-  readonly providers: readonly { id: string; parentId: string; serviceToken: string; scope: string }[];
+  readonly providers: readonly {
+    id: string;
+    parentId: string;
+    serviceToken: string;
+    scope: string;
+  }[];
   readonly routes: readonly { id: string; parentId: string; path: string; method: string }[];
   readonly middleware: readonly { id: string; parentId?: string }[];
   readonly interceptors: readonly { id: string; parentId?: string }[];
@@ -17,10 +22,7 @@ interface ScannedApplicationModel {
 
 import { ScannerConfiguration } from './ScannerConfiguration';
 import { ScannerDiagnostics } from '../diagnostics/ScannerDiagnostics';
-import {
-  RegistrationConflictError,
-  RegistrationOrderingError,
-} from '../errors/ScannerErrors';
+import { RegistrationConflictError, RegistrationOrderingError } from '../errors/ScannerErrors';
 import { RegistrationGraph } from '../graph/RegistrationGraph';
 import { RegistrationGraphValidator } from '../graph/RegistrationGraphValidator';
 import { ScannerProfiler } from '../internal/ScannerProfiler';

@@ -7,10 +7,7 @@ export class HealthSupervisor {
   private readonly _lifecycle: RuntimeExecutionLifecycleManager;
   private _failedComponentsCount = 0;
 
-  constructor(
-    monitor: HealthMonitor,
-    lifecycle: RuntimeExecutionLifecycleManager,
-  ) {
+  constructor(monitor: HealthMonitor, lifecycle: RuntimeExecutionLifecycleManager) {
     this._monitor = monitor;
     this._lifecycle = lifecycle;
   }

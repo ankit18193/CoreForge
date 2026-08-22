@@ -112,8 +112,12 @@ export class RouteRegistry {
     const hasWildA = a.some((s) => s.type === 'WILDCARD');
     const hasWildB = b.some((s) => s.type === 'WILDCARD');
 
-    if (hasWildA && !hasWildB) {return 1;}
-    if (!hasWildA && hasWildB) {return -1;}
+    if (hasWildA && !hasWildB) {
+      return 1;
+    }
+    if (!hasWildA && hasWildB) {
+      return -1;
+    }
 
     return b.length - a.length;
   }

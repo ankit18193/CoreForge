@@ -11,10 +11,9 @@ export class ShutdownExecutor {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new RuntimeShutdownError(
-        `ShutdownExecutor: Shutdown sequence failed: ${msg}`,
-        { cause: err as Record<string, unknown> },
-      );
+      throw new RuntimeShutdownError(`ShutdownExecutor: Shutdown sequence failed: ${msg}`, {
+        cause: err as Record<string, unknown>,
+      });
     }
   }
 }

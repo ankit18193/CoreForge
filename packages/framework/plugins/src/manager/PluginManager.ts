@@ -1,7 +1,4 @@
-import {
-  PluginDescriptor,
-  PluginManager as IPluginManager,
-} from '@coreforge/contracts';
+import { PluginDescriptor, PluginManager as IPluginManager } from '@coreforge/contracts';
 
 import { PluginConfiguration } from './PluginConfiguration';
 import { PluginDiagnostics } from '../diagnostics/PluginDiagnostics';
@@ -21,10 +18,7 @@ export class PluginManager implements IPluginManager {
 
   private readonly _runningOperations = new Set<string>();
 
-  constructor(
-    config: PluginConfiguration,
-    context?: PluginExecutionContext,
-  ) {
+  constructor(config: PluginConfiguration, context?: PluginExecutionContext) {
     this._config = config;
     this._context = context || new PluginExecutionContext();
     this._registrar = new PluginRegistrar(this._context);
@@ -65,19 +59,14 @@ export class PluginManager implements IPluginManager {
     this._runningOperations.add(id);
 
     try {
-      if (
-        this.state === PluginState.CREATED ||
-        this.state === PluginState.REGISTERED
-      ) {
+      if (this.state === PluginState.CREATED || this.state === PluginState.REGISTERED) {
         await this._loader.load();
       }
 
       const timestamp = Date.now();
       const registry = this._context.registryManager;
       if (!registry.has(id)) {
-        throw new PluginStateError(
-          `PluginManager: Plugin "${id}" does not exist in registry.`,
-        );
+        throw new PluginStateError(`PluginManager: Plugin "${id}" does not exist in registry.`);
       }
 
       registry.enable(id);
@@ -104,9 +93,7 @@ export class PluginManager implements IPluginManager {
       const timestamp = Date.now();
       const registry = this._context.registryManager;
       if (!registry.has(id)) {
-        throw new PluginStateError(
-          `PluginManager: Plugin "${id}" does not exist in registry.`,
-        );
+        throw new PluginStateError(`PluginManager: Plugin "${id}" does not exist in registry.`);
       }
 
       registry.disable(id);

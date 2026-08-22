@@ -29,6 +29,12 @@ export class DateConverter {
       });
     }
 
-    return new ConversionResult({ success: true, value: date, error: null, sourceType, targetType });
+    return new ConversionResult({
+      success: true,
+      value: date,
+      error: null,
+      sourceType,
+      targetType,
+    });
   }
 }

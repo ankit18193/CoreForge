@@ -20,7 +20,13 @@ export class EnumConverter {
     const strVal = String(value);
 
     if (Object.values(enumObj).includes(strVal)) {
-      return new ConversionResult({ success: true, value: strVal, error: null, sourceType, targetType });
+      return new ConversionResult({
+        success: true,
+        value: strVal,
+        error: null,
+        sourceType,
+        targetType,
+      });
     }
 
     const keyMatch = Object.keys(enumObj).find((k) => k.toUpperCase() === strVal.toUpperCase());

@@ -20,8 +20,7 @@ export class ControllerCoordinator implements PipelineStage {
     }
 
     const mapping = context.diagnostics.routeMapping as
-      | { controllerId: string; actionName: string }
-      | undefined;
+      { controllerId: string; actionName: string } | undefined;
     if (!mapping) {
       return;
     }

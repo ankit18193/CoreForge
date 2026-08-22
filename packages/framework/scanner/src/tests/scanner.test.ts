@@ -58,7 +58,9 @@ test('Application Scanner & Registration Engine Package', async (t) => {
           { id: 'mod-1', name: 'Module1', dependencies: [] },
         ],
         controllers: [{ id: 'ctrl-1', name: 'Controller1', parentId: 'mod-2' }],
-        providers: [{ id: 'prov-1', parentId: 'mod-1', serviceToken: 'Token1', scope: 'SINGLETON' }],
+        providers: [
+          { id: 'prov-1', parentId: 'mod-1', serviceToken: 'Token1', scope: 'SINGLETON' },
+        ],
         routes: [{ id: 'route-1', parentId: 'ctrl-1', path: '/users', method: 'GET' }],
         middleware: [],
         interceptors: [],

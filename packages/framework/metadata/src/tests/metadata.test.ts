@@ -8,10 +8,7 @@ import { ControllerMetadata } from '../descriptors/ControllerMetadata';
 import { ModuleMetadata } from '../descriptors/ModuleMetadata';
 import { ParameterMetadata } from '../descriptors/ParameterMetadata';
 import { RouteMetadata } from '../descriptors/RouteMetadata';
-import {
-  MetadataDuplicateError,
-  MetadataStateError,
-} from '../errors/MetadataErrors';
+import { MetadataDuplicateError, MetadataStateError } from '../errors/MetadataErrors';
 import { MetadataState } from '../lifecycle/MetadataState';
 import { MetadataBuilder } from '../metadata/MetadataBuilder';
 import { MetadataRegistry } from '../metadata/MetadataRegistry';
@@ -150,9 +147,11 @@ test('Metadata System Package', async (t) => {
     const registry = new MetadataRegistry(builder.build());
 
     assert.throws(() => {
-      ((registry as unknown as Record<string, unknown>)._lifecycle as {
-        transitionTo(state: MetadataState): void;
-      }).transitionTo(MetadataState.STOPPED);
+      (
+        (registry as unknown as Record<string, unknown>)._lifecycle as {
+          transitionTo(state: MetadataState): void;
+        }
+      ).transitionTo(MetadataState.STOPPED);
     }, MetadataStateError);
   });
 });

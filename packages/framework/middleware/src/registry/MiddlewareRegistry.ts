@@ -15,7 +15,12 @@ export class MiddlewareRegistry {
   public register(
     middleware: Middleware,
     scope: MiddlewareScope,
-    options?: { priority?: MiddlewarePriority; id?: string; groupName?: string; routePath?: string },
+    options?: {
+      priority?: MiddlewarePriority;
+      id?: string;
+      groupName?: string;
+      routePath?: string;
+    },
   ): string {
     const id = options?.id || `mw-${scope}-${++this._counter}`;
 
@@ -23,8 +28,7 @@ export class MiddlewareRegistry {
       throw new MiddlewareRegistrationError(`Middleware with id ${id} is already registered.`);
     }
 
-    const priority =
-      options?.priority !== undefined ? options.priority : MiddlewarePriority.NORMAL;
+    const priority = options?.priority !== undefined ? options.priority : MiddlewarePriority.NORMAL;
 
     const descriptor: MiddlewareDescriptor = {
       id,
@@ -63,18 +67,14 @@ export class MiddlewareRegistry {
 
   public getGroup(groupName: string): readonly MiddlewareDescriptor[] {
     const ids = this._groupMappings.get(groupName) || [];
-    const list = ids
-      .map((id) => this._descriptors.get(id)!)
-      .filter((d) => d && d.enabled);
+    const list = ids.map((id) => this._descriptors.get(id)!).filter((d) => d && d.enabled);
     list.sort(this.compareDescriptors);
     return Object.freeze(list);
   }
 
   public getRoute(routePath: string): readonly MiddlewareDescriptor[] {
     const ids = this._routeMappings.get(routePath) || [];
-    const list = ids
-      .map((id) => this._descriptors.get(id)!)
-      .filter((d) => d && d.enabled);
+    const list = ids.map((id) => this._descriptors.get(id)!).filter((d) => d && d.enabled);
     list.sort(this.compareDescriptors);
     return Object.freeze(list);
   }

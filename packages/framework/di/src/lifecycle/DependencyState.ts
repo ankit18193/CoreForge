@@ -1,0 +1,8 @@
+export enum DependencyState {
+  CREATED = 'CREATED',
+  REGISTERING = 'REGISTERING',
+  READY = 'READY',
+  RUNNING = 'RUNNING',
+  STOPPING = 'STOPPING',
+  STOPPED = 'STOPPED',
+}

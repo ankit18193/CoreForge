@@ -7,11 +7,7 @@ export interface ShutdownAction {
 export class RuntimeShutdownRollbackManager {
   private readonly _actions: ShutdownAction[] = [];
 
-  public track(
-    id: string,
-    type: string,
-    stop: () => Promise<void> | void,
-  ): void {
+  public track(id: string, type: string, stop: () => Promise<void> | void): void {
     this._actions.push({ id, type, stop });
   }
 

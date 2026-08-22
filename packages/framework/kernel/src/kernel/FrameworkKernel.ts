@@ -2,10 +2,7 @@ import { FrameworkKernel as IFrameworkKernel } from '@coreforge/contracts';
 
 import { KernelConfiguration } from './KernelConfiguration';
 import { KernelDiagnostics } from '../diagnostics/KernelDiagnostics';
-import {
-  KernelInitializationError,
-  KernelStateError,
-} from '../errors/KernelErrors';
+import { KernelInitializationError, KernelStateError } from '../errors/KernelErrors';
 import { FrameworkIntegrator } from '../integration/FrameworkIntegrator';
 import { IntegrationContext } from '../integration/IntegrationContext';
 import { KernelFinalizer } from '../integration/KernelFinalizer';
@@ -42,9 +39,7 @@ export class FrameworkKernel implements IFrameworkKernel {
     return this._context.registry;
   }
 
-  public async initialize(
-    subsystems: Record<string, unknown> = {},
-  ): Promise<KernelSnapshot> {
+  public async initialize(subsystems: Record<string, unknown> = {}): Promise<KernelSnapshot> {
     if (this._lifecycle.state !== KernelState.CREATED) {
       throw new KernelStateError(
         'FrameworkKernel: initialize() was rejected because the kernel is already initialized or initializing.',
@@ -57,10 +52,7 @@ export class FrameworkKernel implements IFrameworkKernel {
     this._lifecycle.transitionTo(KernelState.BUILDING);
     this._diagnostics.recordTransition();
 
-    const integrator = new FrameworkIntegrator(
-      this._context,
-      this._diagnostics,
-    );
+    const integrator = new FrameworkIntegrator(this._context, this._diagnostics);
     integrator.integrate(subsystems);
 
     this._lifecycle.transitionTo(KernelState.VALIDATING);
@@ -79,17 +71,12 @@ export class FrameworkKernel implements IFrameworkKernel {
       this._diagnostics.recordValidation(valProfiler.durationMs, false);
 
       const msg = err instanceof Error ? err.message : String(err);
-      throw new KernelInitializationError(
-        `FrameworkKernel: Validation failed: ${msg}`,
-        { cause: err as Record<string, unknown> },
-      );
+      throw new KernelInitializationError(`FrameworkKernel: Validation failed: ${msg}`, {
+        cause: err as Record<string, unknown>,
+      });
     }
 
-    const finalizer = new KernelFinalizer(
-      this._context,
-      this._lifecycle,
-      this._diagnostics,
-    );
+    const finalizer = new KernelFinalizer(this._context, this._lifecycle, this._diagnostics);
     const snapshot = finalizer.finalize();
 
     this._diagnostics.recordInitialization(initProfiler.durationMs);

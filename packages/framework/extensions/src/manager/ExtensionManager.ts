@@ -1,7 +1,4 @@
-import {
-  ExtensionDescriptor,
-  ExtensionManager as IExtensionManager,
-} from '@coreforge/contracts';
+import { ExtensionDescriptor, ExtensionManager as IExtensionManager } from '@coreforge/contracts';
 
 import { ExtensionConfiguration } from './ExtensionConfiguration';
 import { ExtensionDiagnostics } from '../diagnostics/ExtensionDiagnostics';
@@ -19,10 +16,7 @@ export class ExtensionManager implements IExtensionManager {
 
   private readonly _runningOperations = new Set<string>();
 
-  constructor(
-    config: ExtensionConfiguration,
-    context?: ExtensionExecutionContext,
-  ) {
+  constructor(config: ExtensionConfiguration, context?: ExtensionExecutionContext) {
     this._config = config;
     this._context = context || new ExtensionExecutionContext();
     this._registrar = new ExtensionRegistrar(this._context);

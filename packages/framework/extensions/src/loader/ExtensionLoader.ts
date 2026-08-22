@@ -25,11 +25,7 @@ export class ExtensionLoader {
       const resProfiler = new ExtensionProfiler();
       resProfiler.start();
       const { graph, order } = this._resolver.resolve(registered);
-      this._context.diagnostics.recordResolution(
-        resProfiler.durationMs,
-        graph.size,
-        graph.depth,
-      );
+      this._context.diagnostics.recordResolution(resProfiler.durationMs, graph.size, graph.depth);
 
       this._context.extensionRegistry.makeReadOnly();
 

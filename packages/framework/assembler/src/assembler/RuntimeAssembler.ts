@@ -139,12 +139,7 @@ export class RuntimeAssembler implements IRuntimeAssembler {
 
     this._config.cache.cacheAssembly(runtime);
 
-    this._diagnostics.recordTimings(
-      totalProfiler.durationMs,
-      planTime,
-      graphTime,
-      valTime,
-    );
+    this._diagnostics.recordTimings(totalProfiler.durationMs, planTime, graphTime, valTime);
     this._diagnostics.recordCounts(
       registry.modules.length,
       registry.providers.length,
