@@ -1,18 +1,16 @@
 import {
+  NormalizedRequest,
   ParameterBindingDescriptor,
   ParameterBindingResolver,
   ParameterBindingSource,
 } from '@coreforge/contracts';
 
-export type { ParameterBindingDescriptor, ParameterBindingResolver, ParameterBindingSource };
-
-export interface NormalizedRequest {
-  readonly params?: Readonly<Record<string, unknown>> | undefined;
-  readonly query?: Readonly<Record<string, unknown>> | undefined;
-  readonly body?: unknown | undefined;
-  readonly headers?: Readonly<Record<string, string | string[] | undefined>> | undefined;
-  readonly cookies?: Readonly<Record<string, string | undefined>> | undefined;
-}
+export type {
+  NormalizedRequest,
+  ParameterBindingDescriptor,
+  ParameterBindingResolver,
+  ParameterBindingSource,
+};
 
 export interface ParameterBindingDiagnosticsSnapshot {
   readonly totalBindings: number;

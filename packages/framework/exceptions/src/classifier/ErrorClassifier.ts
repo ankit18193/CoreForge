@@ -132,6 +132,18 @@ export class ErrorClassifier {
         };
       }
 
+      if (
+        code.includes('METHOD_NOT_ALLOWED') ||
+        code.includes('METHOD-NOT-ALLOWED') ||
+        name.includes('MethodNotAllowed')
+      ) {
+        return {
+          category: 'EXECUTION',
+          code: code || 'CF-METHOD-NOT-ALLOWED-ERROR',
+          status: 405,
+        };
+      }
+
       // Default for generic Error instances
       if (error instanceof Error) {
         return {

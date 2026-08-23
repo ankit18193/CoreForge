@@ -371,8 +371,11 @@ export interface RuntimeExecutionResult {
 }
 
 export interface RuntimeOrchestrator {
-  start(runtime: InitializedRuntime): Promise<RuntimeExecutionResult>;
+  start(runtime?: InitializedRuntime): Promise<RuntimeExecutionResult | void>;
+  handle?(request: unknown, nativeResponse?: unknown, writer?: unknown): Promise<unknown>;
   stop(): Promise<void>;
+  readonly state?: unknown;
+  readonly snapshot?: unknown;
 }
 
 export interface ExtensionDescriptor {
@@ -599,4 +602,97 @@ export interface ExceptionHandler {
 
 export interface ExceptionPipeline {
   handle(error: unknown, context: ExceptionContext): Promise<ErrorDescriptor>;
+}
+
+// Canonical Normalized Request & Transport Boundary Contracts
+export interface NormalizedRequest {
+  readonly method?: string | undefined;
+  readonly path?: string | undefined;
+  readonly params?: Readonly<Record<string, unknown>> | undefined;
+  readonly query?: Readonly<Record<string, unknown>> | undefined;
+  readonly body?: unknown | undefined;
+  readonly headers?: Readonly<Record<string, string | readonly string[] | undefined>> | undefined;
+  readonly cookies?: Readonly<Record<string, string | undefined>> | undefined;
+}
+
+export type TransportRequest = NormalizedRequest;
+
+export interface TransportResponse {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string | readonly string[]>>;
+  readonly contentType?: string | undefined;
+  readonly body: unknown;
+}
+
+export interface TransportRequestNormalizer<TNativeRequest = unknown> {
+  normalize(request: TNativeRequest): NormalizedRequest;
+}
+
+export interface TransportResponseWriter<TNativeResponse = unknown> {
+  write(response: TNativeResponse, descriptor: ResponseDescriptor): void | Promise<void>;
+}
+
+export interface TransportAdapter<TNativeRequest = unknown, TNativeResponse = unknown> {
+  readonly name: string;
+
+  normalizeRequest(request: TNativeRequest): NormalizedRequest;
+
+  writeResponse(response: TNativeResponse, descriptor: ResponseDescriptor): void | Promise<void>;
+}
+
+// Routing & Route Matching Engine Contracts
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+
+export type RouteSegment =
+  | {
+      readonly kind: 'STATIC';
+      readonly value: string;
+    }
+  | {
+      readonly kind: 'PARAM';
+      readonly name: string;
+      readonly constraint?: string | undefined;
+    }
+  | {
+      readonly kind: 'WILDCARD';
+      readonly name: string;
+    };
+
+export interface CompiledRoute {
+  readonly id: string;
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly segments: readonly RouteSegment[];
+  readonly action: ActionDescriptor;
+  readonly precedence: number;
+}
+
+export interface RouteMatcher<TRouteMatch = unknown> {
+  match(request: NormalizedRequest): TRouteMatch;
+}
+
+// Application Runtime Orchestrator & Lifecycle Engine Contracts
+export type RuntimeState =
+  | 'CREATED'
+  | 'VALIDATING'
+  | 'COMPILING'
+  | 'INITIALIZING'
+  | 'READY'
+  | 'STOPPING'
+  | 'STOPPED'
+  | 'FAILED';
+
+export interface RuntimeApplication {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  readonly state: RuntimeState;
+  readonly ready: boolean;
+}
+
+export interface RuntimeSnapshot {
+  readonly state: RuntimeState;
+  readonly startedAt?: number | undefined;
+  readonly stoppedAt?: number | undefined;
+  readonly activeRequests: number;
+  readonly ready: boolean;
 }

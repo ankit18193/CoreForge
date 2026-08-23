@@ -1,0 +1,17 @@
+{
+  "name": "@coreforge/routing",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@coreforge/contracts": "0.1.0",
+    "@coreforge/errors": "0.1.0",
+    "@coreforge/metadata": "0.1.0",
+    "@coreforge/types": "0.1.0",
+    "@coreforge/utils": "0.1.0"
+  }
+}

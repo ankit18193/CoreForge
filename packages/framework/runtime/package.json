@@ -2,20 +2,29 @@
   "name": "@coreforge/runtime",
   "version": "0.1.0",
   "private": true,
-  "description": "Process orchestration and environment execution context host for CoreForge",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "CoreForge Application Runtime Orchestrator & Lifecycle Engine",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean"
   },
   "dependencies": {
-    "@coreforge/types": "*",
-    "@coreforge/contracts": "*",
-    "@coreforge/errors": "*",
-    "@coreforge/utils": "*",
-    "@coreforge/config": "*",
-    "@coreforge/container": "*",
-    "@coreforge/events": "*"
+    "@coreforge/contracts": "0.1.0",
+    "@coreforge/errors": "0.1.0",
+    "@coreforge/metadata": "0.1.0",
+    "@coreforge/decorators": "0.1.0",
+    "@coreforge/di": "0.1.0",
+    "@coreforge/request-context": "0.1.0",
+    "@coreforge/parameter-binding": "0.1.0",
+    "@coreforge/routing": "0.1.0",
+    "@coreforge/execution": "0.1.0",
+    "@coreforge/response": "0.1.0",
+    "@coreforge/exceptions": "0.1.0",
+    "@coreforge/transport": "0.1.0",
+    "@coreforge/discovery": "0.1.0",
+    "@coreforge/compiler": "0.1.0",
+    "@coreforge/types": "0.1.0",
+    "@coreforge/utils": "0.1.0"
   }
 }

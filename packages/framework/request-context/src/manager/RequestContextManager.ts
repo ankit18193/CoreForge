@@ -1,7 +1,7 @@
 import { RequestContextManagerOptions } from './RequestContextManagerOptions';
 import { RequestContext } from '../context/RequestContext';
 import { RequestContextDiagnostics } from '../diagnostics/RequestContextDiagnostics';
-import { ContextTimeoutError } from '../errors/RequestContextErrors';
+import { ContextCancelledError, ContextTimeoutError } from '../errors/RequestContextErrors';
 import { RequestContextProfiler } from '../internal/RequestContextProfiler';
 import { ContextStorage } from '../storage/ContextStorage';
 import {
@@ -89,6 +89,13 @@ export class RequestContextManager implements IRequestContextManager {
             this._diagnostics.recordContextTimedOut(context.id, duration);
           }
           throw new ContextTimeoutError(context.id, options.timeoutMs || 0);
+        }
+
+        if (context.isCancelled) {
+          if (this._options.enableDiagnostics ?? true) {
+            this._diagnostics.recordContextCancelled(context.id, duration);
+          }
+          throw new ContextCancelledError(context.id);
         }
 
         if (this._options.enableDiagnostics ?? true) {

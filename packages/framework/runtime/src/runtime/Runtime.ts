@@ -112,7 +112,7 @@ export class Runtime {
     }
 
     return {
-      state: this._stateMachine.state,
+      state: this._stateMachine.state as unknown as import('../types/runtimeTypes').RuntimeState,
       startedAt: this._clock.startedAt,
       uptime: this._clock.uptime,
       processId: process.pid,
