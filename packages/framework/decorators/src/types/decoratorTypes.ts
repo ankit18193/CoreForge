@@ -35,7 +35,22 @@ export interface ProviderOptions {
   readonly useFactory?: ((...args: unknown[]) => unknown) | undefined;
 }
 
-export type ParamSource = 'param' | 'query' | 'body' | 'header' | 'cookie';
+export type ParamSource =
+  | 'param'
+  | 'query'
+  | 'body'
+  | 'header'
+  | 'cookie'
+  | 'PARAM'
+  | 'QUERY'
+  | 'BODY'
+  | 'HEADER'
+  | 'COOKIE';
+
+export interface BindingDecoratorOptions {
+  readonly name?: string | undefined;
+  readonly required?: boolean | undefined;
+}
 
 export interface ParamOptions {
   readonly name?: string | undefined;

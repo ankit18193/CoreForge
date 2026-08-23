@@ -48,25 +48,6 @@ export interface EventBus {
   unsubscribe(subscription: unknown): void;
 }
 
-// Exception Pipeline Contracts
-export interface ExceptionContext {
-  readonly requestId?: string | undefined;
-  readonly traceId?: string | undefined;
-  readonly spanId?: string | undefined;
-  readonly module?: string | undefined;
-  readonly service?: string | undefined;
-  readonly operation?: string | undefined;
-  readonly environment?: string | undefined;
-  readonly runtimeState?: string | undefined;
-  readonly moduleState?: string | undefined;
-  readonly timestamp: number;
-  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
-}
-
-export interface ExceptionHandler {
-  handle(error: Error, context?: ExceptionContext): Promise<void>;
-}
-
 export interface FrameworkRegistry {
   get<T>(name: string): T;
   has(name: string): boolean;
@@ -498,4 +479,124 @@ export interface RequestContextManager {
   ): Promise<R>;
   runInContext<R>(fn: (context: RequestContext) => Promise<R>): Promise<R>;
   getCurrentContext(): RequestContext | undefined;
+}
+
+// Parameter Binding Contracts
+export type ParameterBindingSource = 'PARAM' | 'QUERY' | 'BODY' | 'HEADER' | 'COOKIE';
+
+export interface ParameterBindingDescriptor {
+  readonly id: string;
+  readonly actionId: string;
+  readonly parameterIndex: number;
+  readonly source: ParameterBindingSource;
+  readonly name?: string | undefined;
+  readonly required: boolean;
+}
+
+export interface ParameterBindingResolver {
+  resolveArguments(descriptors: readonly ParameterBindingDescriptor[], request: unknown): unknown[];
+}
+
+// Action Execution Contracts
+export type ExecutionResult<T = unknown> = T;
+
+export interface ActionDescriptor {
+  readonly id: string;
+  readonly controllerToken: InjectionToken;
+  readonly methodName: string | symbol;
+  readonly parameterBindings: readonly ParameterBindingDescriptor[];
+  readonly guards: readonly InjectionToken[];
+  readonly middleware: readonly InjectionToken[];
+  readonly interceptors: readonly InjectionToken[];
+}
+
+export interface ExecutionContext {
+  readonly requestContext: RequestContext;
+  readonly action: ActionDescriptor;
+  readonly request: unknown;
+
+  resolve<T>(token: InjectionToken<T>): Promise<T>;
+}
+
+export interface ExecutionActionInvoker {
+  invoke(context: ExecutionContext, arguments_: readonly unknown[]): Promise<unknown>;
+}
+
+export interface ExecutionEngine {
+  execute(action: ActionDescriptor, request: unknown, context: RequestContext): Promise<unknown>;
+}
+
+// Response Processing & Serialization Contracts
+export type ResponseStatus = number;
+
+export interface ResponseHeaders {
+  readonly values: Readonly<Record<string, string | readonly string[]>>;
+}
+
+export interface ResponseDescriptor<T = unknown> {
+  readonly status: ResponseStatus;
+  readonly headers: ResponseHeaders;
+  readonly contentType?: string | undefined;
+  readonly body: T;
+}
+
+export interface ResponseProcessor {
+  process<T>(result: T | Promise<T>): Promise<ResponseDescriptor>;
+}
+
+export interface ResponseSerializationOptions {
+  readonly contentType?: string | undefined;
+  readonly status?: number | undefined;
+  readonly headers?: Readonly<Record<string, string | readonly string[]>>;
+}
+
+// Exception Handling & Error Pipeline Contracts
+export type ErrorCategory =
+  | 'VALIDATION'
+  | 'AUTHENTICATION'
+  | 'AUTHORIZATION'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'DEPENDENCY'
+  | 'TIMEOUT'
+  | 'CANCELLATION'
+  | 'EXECUTION'
+  | 'SERIALIZATION'
+  | 'INTERNAL';
+
+export interface ErrorCauseDescriptor {
+  readonly code?: string | undefined;
+  readonly category?: ErrorCategory | undefined;
+  readonly message: string;
+}
+
+export interface ErrorDescriptor {
+  readonly code: string;
+  readonly category: ErrorCategory;
+  readonly message: string;
+  readonly status: number;
+  readonly details?: Readonly<Record<string, unknown>> | undefined;
+  readonly cause?: ErrorCauseDescriptor | undefined;
+  readonly stack?: string | undefined;
+  readonly timestamp: number;
+}
+
+export interface ExceptionContext {
+  readonly requestContext: RequestContext;
+  readonly error: unknown;
+
+  get<T>(key: string): T | undefined;
+  set<T>(key: string, value: T): void;
+}
+
+export interface ExceptionHandler {
+  readonly priority?: number | undefined;
+
+  canHandle(error: unknown, context: ExceptionContext): boolean | Promise<boolean>;
+
+  handle(error: unknown, context: ExceptionContext): ErrorDescriptor | Promise<ErrorDescriptor>;
+}
+
+export interface ExceptionPipeline {
+  handle(error: unknown, context: ExceptionContext): Promise<ErrorDescriptor>;
 }

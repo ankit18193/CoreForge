@@ -1,5 +1,4 @@
 import { ConfigProvider } from '@coreforge/config';
-import { ExceptionReporter } from '@coreforge/exceptions';
 
 import { BootstrapOptions } from './BootstrapOptions';
 
@@ -7,7 +6,7 @@ export class BootstrapConfiguration {
   public readonly configPath?: string | undefined;
   public readonly configProviders: readonly ConfigProvider[];
   public readonly modules: readonly unknown[];
-  public readonly reporters: readonly ExceptionReporter[];
+  public readonly reporters: readonly unknown[];
   public readonly logWriters: readonly unknown[];
   public readonly runtimeOptions: Readonly<Record<string, unknown>>;
   public readonly startupTimeoutMs?: number | undefined;

@@ -1,8 +1,18 @@
 import { DecoratorMetadataFactory } from '../../metadata/DecoratorMetadataFactory';
 import { MetadataRegistrar } from '../../metadata/MetadataRegistrar';
+import { BindingDecoratorOptions } from '../../types/decoratorTypes';
 import { ParameterDecoratorValidator } from '../../validation/ParameterDecoratorValidator';
 
-export function Cookie(name?: string): ParameterDecorator {
+export function Cookie(
+  nameOrOptions?: string | BindingDecoratorOptions,
+  options?: BindingDecoratorOptions,
+): ParameterDecorator {
+  const name = typeof nameOrOptions === 'string' ? nameOrOptions : nameOrOptions?.name;
+  const required =
+    typeof nameOrOptions === 'object' && nameOrOptions?.required !== undefined
+      ? nameOrOptions.required
+      : (options?.required ?? false);
+
   return function (
     target: object,
     propertyKey: string | symbol | undefined,
@@ -20,6 +30,7 @@ export function Cookie(name?: string): ParameterDecorator {
         name,
         source: 'cookie',
         index: parameterIndex,
+        required,
       },
       target,
     );

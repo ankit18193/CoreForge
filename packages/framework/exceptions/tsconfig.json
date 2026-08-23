@@ -3,12 +3,26 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "."
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "tests/**/*", "index.ts"],
   "references": [
     { "path": "../../foundation/types" },
     { "path": "../../foundation/contracts" },
-    { "path": "../../foundation/errors" }
+    { "path": "../../foundation/errors" },
+    { "path": "../../foundation/utils" },
+    { "path": "../metadata" },
+    { "path": "../decorators" },
+    { "path": "../di" },
+    { "path": "../request-context" },
+    { "path": "../parameter-binding" },
+    { "path": "../execution" },
+    { "path": "../response" },
+    { "path": "../discovery" },
+    { "path": "../compiler" },
+    { "path": "../scanner" },
+    { "path": "../assembler" },
+    { "path": "../runtime-initializer" },
+    { "path": "../runtime-orchestrator" }
   ]
 }

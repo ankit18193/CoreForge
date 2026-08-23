@@ -1,0 +1,15 @@
+import { ErrorCategory } from '../types/exceptionTypes';
+
+export const ErrorCategories: Record<string, ErrorCategory> = {
+  VALIDATION: 'VALIDATION',
+  AUTHENTICATION: 'AUTHENTICATION',
+  AUTHORIZATION: 'AUTHORIZATION',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  DEPENDENCY: 'DEPENDENCY',
+  TIMEOUT: 'TIMEOUT',
+  CANCELLATION: 'CANCELLATION',
+  EXECUTION: 'EXECUTION',
+  SERIALIZATION: 'SERIALIZATION',
+  INTERNAL: 'INTERNAL',
+} as const;

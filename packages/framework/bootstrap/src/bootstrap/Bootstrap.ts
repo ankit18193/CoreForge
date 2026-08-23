@@ -2,16 +2,7 @@ import { ConfigurationLoader, ConfigSchema, DefaultProvider, EnvProvider } from 
 import { Container } from '@coreforge/container';
 import { Bootstrap as IBootstrap, Logger, Module } from '@coreforge/contracts';
 import { EventBus } from '@coreforge/events';
-import {
-  ConsoleReporter,
-  ExceptionClassifier,
-  ExceptionHandler,
-  ExceptionMapper,
-  ExceptionPipeline,
-  FilterPipeline,
-  LoggerReporter,
-  ReporterPipeline,
-} from '@coreforge/exceptions';
+import { ExceptionPipeline } from '@coreforge/exceptions';
 import { ConsoleWriter, LoggerBuilder, PrettyFormatter } from '@coreforge/logging';
 import { ModuleConstructor, ModuleLoader } from '@coreforge/modules';
 import { Runtime, RuntimeOptions } from '@coreforge/runtime';
@@ -75,7 +66,11 @@ export class Bootstrap implements IBootstrap {
       : undefined;
     const registeredModules = moduleLoader ? moduleLoader.discover() : [];
 
-    const reporters = this._configuration.reporters.map((r) => r.name);
+    const reporters = this._configuration.reporters.map((r) =>
+      typeof r === 'object' && r && 'name' in r
+        ? String((r as Record<string, unknown>).name)
+        : 'unknown',
+    );
     const services = this._context.registry.keys();
 
     let eventHandlersCount = 0;
@@ -165,32 +160,9 @@ export class Bootstrap implements IBootstrap {
     // 4. EXCEPTION_HANDLER Stage
     this._pipeline.registerStage(BootstrapStage.EXCEPTION_HANDLER, {
       execute: (ctx) => {
-        const logger = ctx.registry.get<Logger>('Logger');
-
-        const mapper = new ExceptionMapper();
-        const classifier = new ExceptionClassifier();
-        const filterPipeline = new FilterPipeline();
-        const reporterPipeline = new ReporterPipeline();
-
-        reporterPipeline.addReporter(new LoggerReporter(logger));
-
-        if (this._configuration.reporters.length > 0) {
-          for (const r of this._configuration.reporters) {
-            reporterPipeline.addReporter(r);
-          }
-        } else {
-          reporterPipeline.addReporter(new ConsoleReporter());
-        }
-
-        const exceptionPipeline = new ExceptionPipeline({
-          mapper,
-          classifier,
-          filterPipeline,
-          reporterPipeline,
-        });
-
-        const handler = new ExceptionHandler(exceptionPipeline);
-        ctx.registry.set('ExceptionHandler', handler);
+        const exceptionPipeline = new ExceptionPipeline();
+        ctx.registry.set('ExceptionPipeline', exceptionPipeline);
+        ctx.registry.set('ExceptionHandler', exceptionPipeline);
       },
     });
 

@@ -217,8 +217,9 @@ export class MetadataRegistrar {
         type: MetadataType.PARAMETER,
         parentId,
         name: (p.properties['name'] as string) || undefined,
-        source: (p.properties['source'] as string) || 'param',
+        source: ((p.properties['source'] as string) || 'PARAM').toUpperCase(),
         index: (p.properties['index'] as number) ?? 0,
+        required: (p.properties['required'] as boolean) ?? false,
       };
       finalizedDescriptors.push(desc);
     }

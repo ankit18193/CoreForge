@@ -1,5 +1,4 @@
 import { ConfigProvider } from '@coreforge/config';
-import { ExceptionReporter } from '@coreforge/exceptions';
 
 import { Bootstrap } from './Bootstrap';
 import { BootstrapConfiguration } from './BootstrapConfiguration';
@@ -35,7 +34,7 @@ export class BootstrapBuilder {
     return this;
   }
 
-  public registerReporter(reporter: ExceptionReporter): this {
+  public registerReporter(reporter: unknown): this {
     if (!this._options.reporters) {
       this._options.reporters = [];
     }
