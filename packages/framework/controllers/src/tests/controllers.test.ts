@@ -15,11 +15,15 @@ import { ControllerContext } from '../executor/ControllerContext';
 import { ControllerState } from '../lifecycle/ControllerState';
 
 class DummyLogger implements Logger {
+  trace() {}
   debug() {}
   info() {}
   warn() {}
   error() {}
   fatal() {}
+  child() {
+    return this;
+  }
 }
 
 class DummyEventBus implements EventBus {

@@ -24,11 +24,15 @@ import { RequestHandlerState } from '../lifecycle/RequestHandlerLifecycle';
 import { RequestServices } from '../types/requestHandlerTypes';
 
 class DummyLogger implements Logger {
+  trace() {}
   debug() {}
   info() {}
   warn() {}
   error() {}
   fatal() {}
+  child() {
+    return this;
+  }
 }
 
 class DummyEventBus implements EventBus {

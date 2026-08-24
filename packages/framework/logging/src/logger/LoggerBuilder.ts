@@ -1,68 +1,75 @@
 import { Logger } from './Logger';
-import { LogContext } from '../context/LogContext';
-import { InvalidLogLevelError } from '../errors/LoggingErrors';
-import { LogFilter } from '../filters/LogFilter';
-import { Formatter } from '../formatters/Formatter';
-import { DefaultTimestampProvider, TimestampProvider } from '../internal/TimestampProvider';
-import { LogLevel } from '../levels/LogLevel';
-import { Writer } from '../writers/Writer';
+import { LogPipelineBuilder } from '../pipeline/LogPipelineBuilder';
+import { LogLevel, LogProcessor, LogSink } from '../types/loggingTypes';
 
 export class LoggerBuilder {
-  private _formatter?: Formatter;
-  private readonly _writers: Writer[] = [];
-  private readonly _filters: LogFilter[] = [];
-  private _timestampProvider?: TimestampProvider;
-  private _minLevel: LogLevel = LogLevel.INFO;
-  private _context?: LogContext;
+  private readonly _pipelineBuilder = new LogPipelineBuilder();
+  private _exposeStack = true;
+  private _maxCauseDepth = 5;
+  private _maxMessageLength?: number | undefined;
+  private _autoStart = true;
+  private _context: Record<string, unknown> = {};
 
-  public setFormatter(formatter: Formatter): this {
-    this._formatter = formatter;
+  public setMinimumLevel(level: LogLevel): this {
+    this._pipelineBuilder.setMinimumLevel(level);
     return this;
   }
 
-  public addWriter(writer: Writer): this {
-    this._writers.push(writer);
+  public addProcessor(processor: LogProcessor): this {
+    this._pipelineBuilder.addProcessor(processor);
     return this;
   }
 
-  public addFilter(filter: LogFilter): this {
-    this._filters.push(filter);
+  public addSink(sink: LogSink): this {
+    this._pipelineBuilder.addSink(sink);
     return this;
   }
 
-  public setTimestampProvider(provider: TimestampProvider): this {
-    this._timestampProvider = provider;
+  public addWriter(sinkOrWriter: LogSink): this {
+    return this.addSink(sinkOrWriter);
+  }
+
+  public setFormatter(_formatter: unknown): this {
     return this;
   }
 
-  public setMinLevel(level: LogLevel): this {
-    if (level === undefined || level === null || LogLevel[level] === undefined) {
-      throw new InvalidLogLevelError(`Invalid log level: ${level}`);
-    }
-    this._minLevel = level;
+  public addRedactionKey(key: string): this {
+    this._pipelineBuilder.addRedactionKey(key);
     return this;
   }
 
-  public setContext(context: LogContext): this {
+  public setExposeStack(expose: boolean): this {
+    this._exposeStack = expose;
+    return this;
+  }
+
+  public setMaxCauseDepth(depth: number): this {
+    this._maxCauseDepth = depth;
+    return this;
+  }
+
+  public setMaxMessageLength(length: number): this {
+    this._maxMessageLength = length;
+    return this;
+  }
+
+  public setAutoStart(autoStart: boolean): this {
+    this._autoStart = autoStart;
+    return this;
+  }
+
+  public setContext(context: Record<string, unknown>): this {
     this._context = context;
     return this;
   }
 
   public build(): Logger {
-    if (!this._formatter) {
-      throw new Error('LoggerBuilder: Formatter must be specified.');
-    }
-    if (this._writers.length === 0) {
-      throw new Error('LoggerBuilder: At least one Writer must be added.');
-    }
-
-    return new Logger({
-      formatter: this._formatter,
-      writers: [...this._writers],
-      filters: [...this._filters],
-      timestampProvider: this._timestampProvider || new DefaultTimestampProvider(),
-      minLevel: this._minLevel,
-      context: this._context || new LogContext({}),
+    const pipeline = this._pipelineBuilder.build();
+    return new Logger(pipeline, this._context, {
+      exposeStack: this._exposeStack,
+      maxCauseDepth: this._maxCauseDepth,
+      maxMessageLength: this._maxMessageLength,
+      autoStart: this._autoStart,
     });
   }
 }

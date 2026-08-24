@@ -731,3 +731,67 @@ export interface ConfigurationManager {
   snapshot(): ConfigurationSnapshot;
   readonly ready: boolean;
 }
+
+// Structured Logging & Log Pipeline Engine Contracts
+export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+
+export interface LogErrorDescriptor {
+  readonly name: string;
+  readonly message: string;
+  readonly code?: string | undefined;
+  readonly stack?: string | undefined;
+  readonly cause?: LogErrorDescriptor | undefined;
+}
+
+export interface LogRecord {
+  readonly timestamp: number;
+  readonly level: LogLevel;
+  readonly message: string;
+  readonly context: Readonly<Record<string, unknown>>;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+  readonly error?: LogErrorDescriptor | undefined;
+}
+
+export interface Logger {
+  trace(message: string, metadata?: Record<string, unknown>): void;
+  debug(message: string, metadata?: Record<string, unknown>): void;
+  info(message: string, metadata?: Record<string, unknown>): void;
+  warn(message: string, metadata?: Record<string, unknown>): void;
+  error(
+    message: string,
+    metadataOrError?: Record<string, unknown> | unknown,
+    error?: unknown,
+  ): void;
+  fatal(
+    message: string,
+    metadataOrError?: Record<string, unknown> | unknown,
+    error?: unknown,
+  ): void;
+
+  child(context: Record<string, unknown>): Logger;
+}
+
+export interface LogSink {
+  readonly name: string;
+  write(record: LogRecord): void | Promise<void>;
+  flush?(): void | Promise<void>;
+  close?(): void | Promise<void>;
+}
+
+export interface LogProcessor {
+  readonly name: string;
+  process(record: LogRecord): LogRecord | Promise<LogRecord>;
+}
+
+export interface LoggerFactory {
+  create(context?: Record<string, unknown>): Logger;
+}
+
+export interface LoggingDiagnosticsSnapshot {
+  readonly totalLogs: number;
+  readonly logsByLevel: Readonly<Record<LogLevel, number>>;
+  readonly processorFailures: number;
+  readonly sinkFailures: number;
+  readonly averageProcessingDurationMs: number;
+  readonly slowestProcessingDurationMs: number;
+}

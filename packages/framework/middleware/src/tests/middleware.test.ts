@@ -18,11 +18,15 @@ import { MiddlewareState } from '../pipeline/MiddlewareState';
 import { PipelineBuilder } from '../pipeline/PipelineBuilder';
 
 class DummyLogger implements Logger {
+  trace() {}
   debug() {}
   info() {}
   warn() {}
   error() {}
   fatal() {}
+  child() {
+    return this;
+  }
 }
 
 class DummyEventBus implements EventBus {

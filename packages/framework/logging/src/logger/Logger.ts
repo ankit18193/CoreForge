@@ -1,240 +1,177 @@
-import { Logger as ILogger } from '@coreforge/contracts';
-
-import { LogContext } from '../context/LogContext';
-import { LogEntry } from '../entries/LogEntry';
-import { FormatterError, WriterError } from '../errors/LoggingErrors';
-import { Formatter } from '../formatters/Formatter';
-import { LogLevel } from '../levels/LogLevel';
-import { LoggerOptions } from '../types/loggingTypes';
-import { Writer } from '../writers/Writer';
+import { LogContextManager } from '../context/LogContextManager';
+import { LoggingLifecycleManager } from '../lifecycle/LoggingLifecycleManager';
+import { LogPipeline } from '../pipeline/LogPipeline';
+import { LogRecordFactory } from '../record/LogRecordFactory';
+import {
+  ILogger,
+  LogLevel,
+  LoggerOptions,
+  LoggingDiagnosticsSnapshot,
+  LoggingState,
+} from '../types/loggingTypes';
 
 export class Logger implements ILogger {
-  private readonly _formatter: Formatter;
-  private readonly _writers: Writer[];
-  private readonly _filters: LoggerOptions['filters'];
-  private readonly _timestampProvider: LoggerOptions['timestampProvider'];
-  private readonly _minLevel: LogLevel;
-  private readonly _context: LogContext;
+  private readonly _pipeline: LogPipeline;
+  private readonly _recordFactory: LogRecordFactory;
+  private readonly _lifecycle: LoggingLifecycleManager;
+  private readonly _context: Readonly<Record<string, unknown>>;
+  private readonly _autoStart: boolean;
 
-  constructor(options: LoggerOptions) {
-    this._formatter = options.formatter;
-    this._writers = options.writers;
-    this._filters = options.filters;
-    this._timestampProvider = options.timestampProvider;
-    this._minLevel = options.minLevel;
-    this._context = options.context;
-  }
-
-  public debug(message: string, context?: unknown): void {
-    this.log(LogLevel.DEBUG, message, context);
-  }
-
-  public info(message: string, context?: unknown): void {
-    this.log(LogLevel.INFO, message, context);
-  }
-
-  public warn(message: string, context?: unknown): void {
-    this.log(LogLevel.WARN, message, context);
-  }
-
-  public error(message: string, error?: Error, context?: unknown): void {
-    this.logWithError(LogLevel.ERROR, message, error, context);
-  }
-
-  public fatal(message: string, error?: Error, context?: unknown): void {
-    this.logWithError(LogLevel.FATAL, message, error, context);
-  }
-
-  public child(newContext: Partial<LogContext>): Logger {
-    const mergedExtra = {
-      ...(this._context.extra || {}),
-      ...(newContext.extra || {}),
-    };
-
-    const mergedParams = {
-      module: newContext.module !== undefined ? newContext.module : this._context.module,
-      requestId:
-        newContext.requestId !== undefined ? newContext.requestId : this._context.requestId,
-      correlationId:
-        newContext.correlationId !== undefined
-          ? newContext.correlationId
-          : this._context.correlationId,
-      userId: newContext.userId !== undefined ? newContext.userId : this._context.userId,
-      service: newContext.service !== undefined ? newContext.service : this._context.service,
-      environment:
-        newContext.environment !== undefined ? newContext.environment : this._context.environment,
-      extra: Object.keys(mergedExtra).length > 0 ? mergedExtra : undefined,
-    };
-
-    return new Logger({
-      formatter: this._formatter,
-      writers: this._writers,
-      filters: this._filters,
-      timestampProvider: this._timestampProvider,
-      minLevel: this._minLevel,
-      context: new LogContext(mergedParams),
+  constructor(
+    pipeline: LogPipeline,
+    context: Record<string, unknown> = {},
+    options: LoggerOptions = {},
+    lifecycle?: LoggingLifecycleManager,
+  ) {
+    this._pipeline = pipeline;
+    this._context = LogContextManager.createContext(context);
+    this._autoStart = options.autoStart ?? true;
+    this._lifecycle = lifecycle ?? new LoggingLifecycleManager();
+    this._recordFactory = new LogRecordFactory({
+      exposeStack: options.exposeStack,
+      maxCauseDepth: options.maxCauseDepth,
+      maxMessageLength: options.maxMessageLength,
     });
+
+    if (this._autoStart && this._lifecycle.state === 'CREATED') {
+      this._lifecycle.setReady();
+    }
   }
 
-  private formatEntry(entry: LogEntry): string {
+  public get state(): LoggingState {
+    return this._lifecycle.state;
+  }
+
+  public get ready(): boolean {
+    return this._lifecycle.ready;
+  }
+
+  public get context(): Readonly<Record<string, unknown>> {
+    return this._context;
+  }
+
+  public get pipeline(): LogPipeline {
+    return this._pipeline;
+  }
+
+  public get diagnostics(): LoggingDiagnosticsSnapshot {
+    return this._pipeline.diagnostics;
+  }
+
+  public start(): void {
+    this._lifecycle.setReady();
+  }
+
+  public async stop(): Promise<void> {
+    this._lifecycle.setStopping();
+    await this._pipeline.flush();
+    await this._pipeline.close();
+    this._lifecycle.setStopped();
+  }
+
+  public trace(message: string, metadata?: Record<string, unknown>): void {
+    this._log('TRACE', message, metadata);
+  }
+
+  public debug(message: string, metadata?: Record<string, unknown>): void {
+    this._log('DEBUG', message, metadata);
+  }
+
+  public info(message: string, metadata?: Record<string, unknown>): void {
+    this._log('INFO', message, metadata);
+  }
+
+  public warn(message: string, metadata?: Record<string, unknown>): void {
+    this._log('WARN', message, metadata);
+  }
+
+  public error(
+    message: string,
+    metadataOrError?: Record<string, unknown> | unknown,
+    error?: unknown,
+  ): void {
+    const { metadata, err } = this._resolveMetadataAndError(metadataOrError, error);
+    this._log('ERROR', message, metadata, err);
+  }
+
+  public fatal(
+    message: string,
+    metadataOrError?: Record<string, unknown> | unknown,
+    error?: unknown,
+  ): void {
+    const { metadata, err } = this._resolveMetadataAndError(metadataOrError, error);
+    this._log('FATAL', message, metadata, err);
+  }
+
+  public child(childContext: Record<string, unknown>): Logger {
+    const mergedContext = LogContextManager.createChild(this._context, childContext);
+    return new Logger(
+      this._pipeline,
+      mergedContext,
+      {
+        autoStart: this._autoStart,
+      },
+      this._lifecycle,
+    );
+  }
+
+  private _log(
+    level: LogLevel,
+    message: string,
+    metadata?: Record<string, unknown>,
+    error?: unknown,
+  ): void {
+    if (!this._lifecycle.assertCanLog(this._autoStart)) {
+      return;
+    }
+
     try {
-      return this._formatter.format(entry);
-    } catch (err: unknown) {
-      if (err instanceof FormatterError) {
+      const record = this._recordFactory.create({
+        level,
+        message,
+        context: this._context,
+        metadata,
+        error,
+      });
+
+      this._pipeline.execute(record);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'LoggingSerializationError') {
         throw err;
       }
-      const cause = err instanceof Error ? err : new Error(String(err));
-      throw new FormatterError(`Formatter failed to format LogEntry: ${cause.message}`, {
-        entry,
-        error: cause.message,
-      });
+      // Pipeline failures must not crash application execution
     }
   }
 
-  private log(level: LogLevel, message: string, contextPayload?: unknown): void {
-    if (level < this._minLevel) {
-      return;
-    }
-
-    const entry = this.createEntry(level, message, undefined, contextPayload);
-    if (!this.shouldLog(entry)) {
-      return;
-    }
-
-    const formatted = this.formatEntry(entry);
-    this.dispatchToWriters(formatted, entry);
-  }
-
-  private logWithError(
-    level: LogLevel,
-    message: string,
-    error?: Error,
-    contextPayload?: unknown,
-  ): void {
-    if (level < this._minLevel) {
-      return;
-    }
-
-    const entry = this.createEntry(level, message, error, contextPayload);
-    if (!this.shouldLog(entry)) {
-      return;
-    }
-
-    const formatted = this.formatEntry(entry);
-    this.dispatchToWriters(formatted, entry);
-  }
-
-  private shouldLog(entry: LogEntry): boolean {
-    for (const filter of this._filters) {
-      if (!filter.shouldLog(entry)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private dispatchToWriters(formatted: string, entry: LogEntry): void {
-    for (const writer of this._writers) {
-      try {
-        const res = writer.write(formatted, entry);
-        if (res instanceof Promise) {
-          res.catch(() => {
-            // Prevent exceptions in async writers from bringing down the process
-          });
-        }
-      } catch (err: unknown) {
-        if (err instanceof WriterError) {
-          throw err;
-        }
-        const cause = err instanceof Error ? err : new Error(String(err));
-        throw new WriterError(`Writer failed to write LogEntry: ${cause.message}`, {
-          entry,
-          error: cause.message,
-        });
-      }
-    }
-  }
-
-  private createEntry(
-    level: LogLevel,
-    message: string,
-    error?: Error,
-    contextPayload?: unknown,
-  ): LogEntry {
-    const id = Math.random().toString(36).substring(2, 15);
-    const timestamp = this._timestampProvider.getTimestamp();
-    const processId = typeof process !== 'undefined' ? process.pid : 0;
-
-    const mergedParams = {
-      module: this._context.module,
-      requestId: this._context.requestId,
-      correlationId: this._context.correlationId,
-      userId: this._context.userId,
-      service: this._context.service,
-      environment: this._context.environment,
-      extra: this._context.extra ? { ...this._context.extra } : {},
-    };
-
-    let metadata: Record<string, unknown> | undefined;
-
-    if (error) {
-      metadata = {
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        },
+  private _resolveMetadataAndError(
+    metadataOrError?: Record<string, unknown> | unknown,
+    error?: unknown,
+  ): { metadata?: Record<string, unknown> | undefined; err?: unknown } {
+    if (error !== undefined) {
+      const meta =
+        typeof metadataOrError === 'object' &&
+        metadataOrError !== null &&
+        !(metadataOrError instanceof Error)
+          ? (metadataOrError as Record<string, unknown>)
+          : undefined;
+      return {
+        metadata: meta,
+        err: error,
       };
     }
 
-    if (contextPayload && typeof contextPayload === 'object') {
-      const payload = contextPayload as Record<string, unknown>;
-      const standardKeys = [
-        'module',
-        'requestId',
-        'correlationId',
-        'userId',
-        'service',
-        'environment',
-      ];
-
-      for (const key of standardKeys) {
-        if (key in payload) {
-          (mergedParams as Record<string, unknown>)[key] = payload[key];
-        }
-      }
-
-      const restKeys = Object.keys(payload).filter((k) => !standardKeys.includes(k));
-      if (restKeys.length > 0) {
-        const extraPayload: Record<string, unknown> = {};
-        for (const k of restKeys) {
-          extraPayload[k] = payload[k];
-        }
-        mergedParams.extra = {
-          ...mergedParams.extra,
-          ...extraPayload,
-        };
-      }
+    if (metadataOrError instanceof Error) {
+      return { err: metadataOrError };
     }
 
-    const finalContext = new LogContext({
-      module: mergedParams.module,
-      requestId: mergedParams.requestId,
-      correlationId: mergedParams.correlationId,
-      userId: mergedParams.userId,
-      service: mergedParams.service,
-      environment: mergedParams.environment,
-      extra: Object.keys(mergedParams.extra).length > 0 ? mergedParams.extra : undefined,
-    });
+    if (typeof metadataOrError === 'object' && metadataOrError !== null) {
+      return { metadata: metadataOrError as Record<string, unknown> };
+    }
 
-    return new LogEntry({
-      id,
-      timestamp,
-      level,
-      message,
-      context: finalContext,
-      metadata,
-      processId,
-    });
+    if (metadataOrError !== undefined) {
+      return { err: metadataOrError };
+    }
+
+    return {};
   }
 }
