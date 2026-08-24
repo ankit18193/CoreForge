@@ -88,7 +88,7 @@ export class ApplicationKernel {
       const eventBusComp = this._components.get('EventBus');
       if (eventBusComp) {
         const bus = eventBusComp.component as EventBus;
-        await bus.publish(new ApplicationStartedEvent());
+        await bus.emit(new ApplicationStartedEvent());
       }
     } catch (err: unknown) {
       this._lifecycle.transitionTo(KernelState.FAILED);
@@ -97,7 +97,7 @@ export class ApplicationKernel {
       const eventBusComp = this._components.get('EventBus');
       if (eventBusComp) {
         const bus = eventBusComp.component as EventBus;
-        await bus.publish(
+        await bus.emit(
           new ApplicationFailedEvent(err instanceof Error ? err : new Error(String(err))),
         );
       }
@@ -121,7 +121,7 @@ export class ApplicationKernel {
     const eventBusComp = this._components.get('EventBus');
     if (eventBusComp) {
       const bus = eventBusComp.component as EventBus;
-      await bus.publish(new ApplicationStoppingEvent());
+      await bus.emit(new ApplicationStoppingEvent());
     }
 
     try {
@@ -133,7 +133,7 @@ export class ApplicationKernel {
 
       if (eventBusComp) {
         const bus = eventBusComp.component as EventBus;
-        await bus.publish(new ApplicationStoppedEvent());
+        await bus.emit(new ApplicationStoppedEvent());
       }
     } catch (err: unknown) {
       this._lifecycle.transitionTo(KernelState.FAILED);

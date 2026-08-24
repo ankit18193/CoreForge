@@ -68,10 +68,16 @@ export class RequestScopeFactory {
     this._config.registry.register(descriptor);
     this._config.diagnostics.recordScopeCreation();
 
-    await this._eventBus.publish({
+    await this._eventBus.emit({
+      id: `evt-${Date.now()}`,
       type: 'ScopeCreatedEvent',
-      scopeId,
+      timestamp: Date.now(),
       requestId,
+      scopeId,
+      payload: {
+        scopeId,
+        requestId,
+      },
     });
 
     for (const fn of this._initializers) {

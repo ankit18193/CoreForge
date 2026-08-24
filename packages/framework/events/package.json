@@ -2,17 +2,17 @@
   "name": "@coreforge/events",
   "version": "0.1.0",
   "private": true,
-  "description": "Event Bus service for CoreForge",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "CoreForge Event Bus & Application Event Pipeline Engine",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean"
   },
   "dependencies": {
-    "@coreforge/types": "*",
-    "@coreforge/contracts": "*",
-    "@coreforge/errors": "*",
-    "@coreforge/utils": "*"
+    "@coreforge/contracts": "0.1.0",
+    "@coreforge/errors": "0.1.0",
+    "@coreforge/types": "0.1.0",
+    "@coreforge/utils": "0.1.0"
   }
 }

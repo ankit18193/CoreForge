@@ -41,13 +41,6 @@ export interface Container {
   has(token: unknown): boolean;
 }
 
-// Event Bus Contract
-export interface EventBus {
-  publish(event: unknown): Promise<void>;
-  subscribe(eventType: unknown, handler: (event: unknown) => Promise<void> | void): unknown;
-  unsubscribe(subscription: unknown): void;
-}
-
 export interface FrameworkRegistry {
   get<T>(name: string): T;
   has(name: string): boolean;
@@ -794,4 +787,200 @@ export interface LoggingDiagnosticsSnapshot {
   readonly sinkFailures: number;
   readonly averageProcessingDurationMs: number;
   readonly slowestProcessingDurationMs: number;
+}
+
+// Event Bus & Application Event Pipeline Engine Contracts
+export interface DomainEvent<TPayload = unknown> {
+  readonly id: string;
+  readonly type: string;
+  readonly timestamp: number;
+  readonly payload: TPayload;
+}
+
+export interface EventHandlerContext {
+  readonly event: DomainEvent;
+  readonly signal?: AbortSignal | undefined;
+}
+
+export type EventHandler<TEvent extends DomainEvent = DomainEvent> = (
+  event: TEvent,
+  context: EventHandlerContext,
+) => void | Promise<void>;
+
+export interface EventSubscription {
+  readonly id: string;
+  readonly eventType: string;
+  unsubscribe(): void;
+}
+
+export interface EventRetryPolicy {
+  readonly maxAttempts: number;
+  readonly delayMs?: number | undefined;
+}
+
+export interface EventHandlerOptions {
+  readonly priority?: number | undefined;
+  readonly retry?: EventRetryPolicy | undefined;
+}
+
+export type EventDispatchMode = 'SEQUENTIAL' | 'PARALLEL';
+
+export interface EventDispatchOptions {
+  readonly mode?: EventDispatchMode | undefined;
+  readonly signal?: AbortSignal | undefined;
+}
+
+export interface EventFailureDescriptor {
+  readonly handlerId: string;
+  readonly message: string;
+  readonly code?: string | undefined;
+}
+
+export interface EventDispatchResult {
+  readonly eventId: string;
+  readonly eventType: string;
+  readonly handlerCount: number;
+  readonly successfulHandlers: number;
+  readonly failedHandlers: number;
+  readonly cancelled: boolean;
+  readonly durationMs: number;
+  readonly errors?: readonly EventFailureDescriptor[] | undefined;
+}
+
+export interface EventBus {
+  emit<T extends DomainEvent>(
+    event: T,
+    options?: EventDispatchOptions,
+  ): Promise<EventDispatchResult>;
+  subscribe<T extends DomainEvent>(
+    eventType: string,
+    handler: EventHandler<T>,
+    options?: EventHandlerOptions,
+  ): EventSubscription;
+}
+
+export interface EventDiagnosticsSnapshot {
+  readonly totalEvents: number;
+  readonly successfulEvents: number;
+  readonly failedEvents: number;
+  readonly cancelledEvents: number;
+  readonly totalHandlerExecutions: number;
+  readonly failedHandlerExecutions: number;
+  readonly retryCount: number;
+  readonly averageEventDurationMs: number;
+  readonly slowestEventDurationMs: number;
+  readonly eventTypeDistribution: Readonly<Record<string, number>>;
+}
+
+// Caching & Cache Abstraction Engine Contracts
+export interface CacheSetOptions {
+  readonly ttlMs?: number | undefined;
+}
+
+export interface CacheProvider {
+  get<T>(key: string): Promise<T | undefined>;
+  set<T>(key: string, value: T, options?: CacheSetOptions): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  has(key: string): Promise<boolean>;
+  clear(): Promise<void>;
+}
+
+export interface CacheSerializer<T = unknown> {
+  serialize(value: T): unknown;
+  deserialize(value: unknown): T;
+}
+
+export type CacheFailurePolicy = 'FAIL_OPEN' | 'FAIL_CLOSED';
+
+export interface Cache {
+  get<T>(key: string): Promise<T | undefined>;
+  set<T>(key: string, value: T, options?: CacheSetOptions): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  has(key: string): Promise<boolean>;
+  clear(): Promise<void>;
+  getOrSet<T>(key: string, factory: () => Promise<T>, options?: CacheSetOptions): Promise<T>;
+  namespace(name: string): Cache;
+}
+
+export interface CacheDiagnosticsSnapshot {
+  readonly totalGets: number;
+  readonly hits: number;
+  readonly misses: number;
+  readonly sets: number;
+  readonly deletes: number;
+  readonly expirations: number;
+  readonly providerFailures: number;
+  readonly factoryExecutions: number;
+  readonly stampedePreventions: number;
+  readonly averageLatencyMs: number;
+  readonly slowestLatencyMs: number;
+}
+
+// Background Jobs & Task Queue Engine Contracts
+export type JobState =
+  | 'CREATED'
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'RETRYING'
+  | 'DEAD_LETTERED'
+  | 'CANCELLED';
+
+export interface Job<TPayload = unknown> {
+  readonly id: string;
+  readonly type: string;
+  readonly payload: TPayload;
+  readonly createdAt: number;
+  readonly attempt: number;
+  readonly state: JobState;
+  readonly priority?: number | undefined;
+  readonly deduplicationKey?: string | undefined;
+  readonly error?: string | undefined;
+  readonly retry?: JobRetryPolicy | undefined;
+}
+
+export interface JobExecutionContext {
+  readonly job: Job;
+  readonly signal: AbortSignal;
+}
+
+export interface JobHandler<TPayload = unknown> {
+  execute(payload: TPayload, context: JobExecutionContext): Promise<void> | void;
+}
+
+export interface JobRetryPolicy {
+  readonly maxAttempts: number;
+  readonly backoffMs?: number | undefined;
+  readonly backoffMultiplier?: number | undefined;
+  readonly maxBackoffMs?: number | undefined;
+}
+
+export interface JobOptions {
+  readonly priority?: number | undefined;
+  readonly retry?: JobRetryPolicy | undefined;
+  readonly deduplicationKey?: string | undefined;
+}
+
+export interface JobQueue {
+  enqueue<T>(type: string, payload: T, options?: JobOptions): Promise<Job<T>>;
+
+  register<T>(type: string, handler: JobHandler<T>): void;
+
+  cancel(jobId: string): Promise<boolean>;
+
+  get(jobId: string): Promise<Job | undefined>;
+}
+
+export interface JobDiagnosticsSnapshot {
+  readonly totalEnqueued: number;
+  readonly totalCompleted: number;
+  readonly totalFailed: number;
+  readonly totalRetried: number;
+  readonly totalCancelled: number;
+  readonly totalDeadLettered: number;
+  readonly activeJobs: number;
+  readonly queuedJobs: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
 }

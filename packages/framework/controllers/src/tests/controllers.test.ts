@@ -1,7 +1,14 @@
 import * as assert from 'node:assert';
 import { test } from 'node:test';
 
-import { Container, Controller, EventBus, Logger } from '@coreforge/contracts';
+import {
+  Container,
+  Controller,
+  DomainEvent,
+  EventBus,
+  EventDispatchResult,
+  Logger,
+} from '@coreforge/contracts';
 
 import { ControllerBuilder } from '../controller/ControllerBuilder';
 import { ControllerFactory } from '../controller/ControllerFactory';
@@ -27,11 +34,20 @@ class DummyLogger implements Logger {
 }
 
 class DummyEventBus implements EventBus {
-  async publish() {}
-  subscribe() {
-    return {};
+  async emit<T extends DomainEvent>(event: T): Promise<EventDispatchResult> {
+    return {
+      eventId: event.id,
+      eventType: event.type,
+      handlerCount: 0,
+      successfulHandlers: 0,
+      failedHandlers: 0,
+      cancelled: false,
+      durationMs: 0,
+    };
   }
-  unsubscribe() {}
+  subscribe() {
+    return { id: 'sub-1', eventType: '', unsubscribe: () => {} };
+  }
 }
 
 class DummyContainer implements Container {

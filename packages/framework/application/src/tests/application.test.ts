@@ -1,7 +1,14 @@
 import * as assert from 'node:assert';
 import { test } from 'node:test';
 
-import { Container, EventBus } from '@coreforge/contracts';
+import {
+  Container,
+  DomainEvent,
+  EventBus,
+  EventDispatchResult,
+  EventHandler,
+  EventSubscription,
+} from '@coreforge/contracts';
 
 import { ApplicationBuilder } from '../application/ApplicationBuilder';
 import { ApplicationStateError, ApplicationValidationError } from '../errors/ApplicationErrors';
@@ -20,34 +27,43 @@ class DummyContainer implements Container {
 
 class MockEventBus implements EventBus {
   public readonly publishedEvents: unknown[] = [];
-  private readonly _handlers = new Map<unknown, ((event: unknown) => Promise<void> | void)[]>();
+  private readonly _handlers = new Map<string, EventHandler[]>();
 
-  public async publish(event: unknown): Promise<void> {
+  public async emit<T extends DomainEvent>(event: T): Promise<EventDispatchResult> {
     this.publishedEvents.push(event);
-    const ev = event as { constructor: unknown };
-    const list = this._handlers.get(ev.constructor) || [];
+    const list = this._handlers.get(event.type) || [];
     for (const handler of list) {
-      await handler(event);
+      await handler(event, { event });
     }
-  }
-
-  public subscribe(eventType: unknown, handler: (event: unknown) => Promise<void> | void): unknown {
-    const list = this._handlers.get(eventType) || [];
-    list.push(handler);
-    this._handlers.set(eventType, list);
-    return { eventType, handler };
-  }
-
-  public unsubscribe(subscription: unknown): void {
-    const sub = subscription as {
-      eventType: unknown;
-      handler: (event: unknown) => Promise<void> | void;
+    return {
+      eventId: event.id,
+      eventType: event.type,
+      handlerCount: list.length,
+      successfulHandlers: list.length,
+      failedHandlers: 0,
+      cancelled: false,
+      durationMs: 0,
     };
-    const list = this._handlers.get(sub.eventType) || [];
-    this._handlers.set(
-      sub.eventType,
-      list.filter((h) => h !== sub.handler),
-    );
+  }
+
+  public subscribe<T extends DomainEvent>(
+    eventType: string,
+    handler: EventHandler<T>,
+  ): EventSubscription {
+    const list = this._handlers.get(eventType) || [];
+    list.push(handler as unknown as EventHandler);
+    this._handlers.set(eventType, list);
+    return {
+      id: 'sub-1',
+      eventType,
+      unsubscribe: () => {
+        const current = this._handlers.get(eventType) || [];
+        this._handlers.set(
+          eventType,
+          current.filter((h) => h !== (handler as unknown as EventHandler)),
+        );
+      },
+    };
   }
 }
 

@@ -68,10 +68,16 @@ export class RequestScope implements IRequestScope {
     } catch (err: unknown) {
       this._lifecycle.transitionTo(ScopeState.FAILED);
       this._eventBus
-        .publish({
+        .emit({
+          id: `evt-${Date.now()}`,
           type: 'ScopeFailedEvent',
+          timestamp: Date.now(),
           scopeId: this.id,
           error: err instanceof Error ? err.message : String(err),
+          payload: {
+            scopeId: this.id,
+            error: err instanceof Error ? err.message : String(err),
+          },
         })
         .catch(() => {});
       throw err;
@@ -100,9 +106,14 @@ export class RequestScope implements IRequestScope {
       this._lifecycle.transitionTo(ScopeState.DISPOSED);
       this._diagnostics.recordScopeDisposal(true, Date.now() - start, Date.now() - this._createdAt);
 
-      await this._eventBus.publish({
+      await this._eventBus.emit({
+        id: `evt-${Date.now()}`,
         type: 'ScopeDisposedEvent',
+        timestamp: Date.now(),
         scopeId: this.id,
+        payload: {
+          scopeId: this.id,
+        },
       });
     } catch (err: unknown) {
       this._lifecycle.transitionTo(ScopeState.FAILED);
@@ -113,10 +124,16 @@ export class RequestScope implements IRequestScope {
       );
 
       await this._eventBus
-        .publish({
+        .emit({
+          id: `evt-${Date.now()}`,
           type: 'ScopeFailedEvent',
+          timestamp: Date.now(),
           scopeId: this.id,
           error: err instanceof Error ? err.message : String(err),
+          payload: {
+            scopeId: this.id,
+            error: err instanceof Error ? err.message : String(err),
+          },
         })
         .catch(() => {});
 

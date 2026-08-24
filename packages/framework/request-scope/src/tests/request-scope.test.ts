@@ -2,7 +2,13 @@ import * as assert from 'node:assert';
 import { test } from 'node:test';
 
 import { Container, ServiceLifetime } from '@coreforge/container';
-import { Disposable, EventBus, Logger } from '@coreforge/contracts';
+import {
+  Disposable,
+  DomainEvent,
+  EventBus,
+  EventDispatchResult,
+  Logger,
+} from '@coreforge/contracts';
 
 import { ScopeExecutionError, DisposalTimeoutError } from '../errors/ScopeErrors';
 import { RequestScopeFactory } from '../factory/RequestScopeFactory';
@@ -25,15 +31,22 @@ class DummyLogger implements Logger {
 class DummyEventBus implements EventBus {
   public readonly events: unknown[] = [];
 
-  public async publish(event: unknown): Promise<void> {
+  public async emit<T extends DomainEvent>(event: T): Promise<EventDispatchResult> {
     this.events.push(event);
+    return {
+      eventId: event.id,
+      eventType: event.type,
+      handlerCount: 0,
+      successfulHandlers: 0,
+      failedHandlers: 0,
+      cancelled: false,
+      durationMs: 0,
+    };
   }
 
   public subscribe() {
-    return {};
+    return { id: 'sub-1', eventType: '', unsubscribe: () => {} };
   }
-
-  public unsubscribe() {}
 }
 
 class MockDisposable implements Disposable {
