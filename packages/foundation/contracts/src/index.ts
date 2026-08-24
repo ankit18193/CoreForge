@@ -696,3 +696,38 @@ export interface RuntimeSnapshot {
   readonly activeRequests: number;
   readonly ready: boolean;
 }
+
+// Configuration & Environment Management Engine Contracts
+export type EnvironmentName = 'development' | 'test' | 'staging' | 'production';
+
+export interface ConfigurationSource {
+  readonly name: string;
+  load(): Promise<Readonly<Record<string, unknown>>> | Readonly<Record<string, unknown>>;
+}
+
+export interface ConfigurationSchema<T = unknown> {
+  validate(value: unknown): T;
+}
+
+export interface ConfigurationSnapshot<T = unknown> {
+  readonly environment: EnvironmentName;
+  readonly version: number;
+  readonly loadedAt: number;
+  readonly values: Readonly<T>;
+}
+
+export interface Configuration {
+  get<T = unknown>(path: string): T | undefined;
+  require<T = unknown>(path: string): T;
+  has(path: string): boolean;
+  snapshot(): ConfigurationSnapshot;
+}
+
+export interface ConfigurationManager {
+  load(): Promise<void>;
+  get<T = unknown>(path: string): T | undefined;
+  require<T = unknown>(path: string): T;
+  has(path: string): boolean;
+  snapshot(): ConfigurationSnapshot;
+  readonly ready: boolean;
+}
