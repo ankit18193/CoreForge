@@ -984,3 +984,273 @@ export interface JobDiagnosticsSnapshot {
   readonly averageDurationMs: number;
   readonly slowestDurationMs: number;
 }
+
+// Distributed Coordination & Locking Engine Contracts
+export interface LockAcquireOptions {
+  readonly ttlMs: number;
+  readonly timeoutMs?: number | undefined;
+  readonly signal?: AbortSignal | undefined;
+}
+
+export interface LockLease {
+  readonly key: string;
+  readonly token: string;
+  readonly acquiredAt: number;
+  readonly expiresAt: number;
+}
+
+export interface LockProvider {
+  acquire(key: string, ttlMs: number): Promise<LockLease | undefined>;
+  renew(key: string, token: string, ttlMs: number): Promise<LockLease | undefined>;
+  release(key: string, token: string): Promise<boolean>;
+  isLocked(key: string): Promise<boolean>;
+}
+
+export interface Lock {
+  acquire(options: LockAcquireOptions): Promise<LockLease>;
+  renew(lease: LockLease, ttlMs: number): Promise<LockLease>;
+  release(lease: LockLease): Promise<boolean>;
+  isLocked(): Promise<boolean>;
+  namespace(name: string): Lock;
+}
+
+export interface LockManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  lock(key: string): Lock;
+  readonly ready: boolean;
+}
+
+export interface LockDiagnosticsSnapshot {
+  readonly totalAcquireAttempts: number;
+  readonly successfulAcquisitions: number;
+  readonly failedAcquisitions: number;
+  readonly acquisitionTimeouts: number;
+  readonly cancellations: number;
+  readonly renewals: number;
+  readonly failedRenewals: number;
+  readonly releases: number;
+  readonly failedReleases: number;
+  readonly expirations: number;
+  readonly contentionCount: number;
+  readonly averageAcquireLatencyMs: number;
+  readonly slowestAcquireLatencyMs: number;
+}
+
+// Rate Limiting & Throttling Engine Contracts
+export type RateLimitAlgorithm = 'FIXED_WINDOW' | 'SLIDING_WINDOW' | 'TOKEN_BUCKET';
+
+export interface RateLimitPolicy {
+  readonly limit: number;
+  readonly windowMs: number;
+  readonly algorithm: RateLimitAlgorithm;
+  readonly burstCapacity?: number | undefined;
+}
+
+export interface RateLimitConsumeOptions {
+  readonly cost?: number | undefined;
+}
+
+export interface RateLimitDecision {
+  readonly allowed: boolean;
+  readonly limit: number;
+  readonly remaining: number;
+  readonly consumed: number;
+  readonly retryAfterMs?: number | undefined;
+  readonly resetAt: number;
+}
+
+export interface RateLimitProvider {
+  consume(key: string, policy: RateLimitPolicy, cost: number): Promise<RateLimitDecision>;
+
+  reset(key: string): Promise<void>;
+
+  clear(): Promise<void>;
+}
+
+export interface RateLimiter {
+  check(key: string, options?: RateLimitConsumeOptions): Promise<RateLimitDecision>;
+
+  consume(key: string, options?: RateLimitConsumeOptions): Promise<RateLimitDecision>;
+
+  reset(key: string): Promise<void>;
+
+  namespace(name: string): RateLimiter;
+}
+
+export interface RateLimiterManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  limiter(policy: RateLimitPolicy): RateLimiter;
+
+  readonly ready: boolean;
+}
+
+export interface RateLimitDiagnosticsSnapshot {
+  readonly totalChecks: number;
+  readonly allowedRequests: number;
+  readonly rejectedRequests: number;
+  readonly totalConsumedCost: number;
+  readonly throttledRequests: number;
+  readonly averageLatencyMs: number;
+  readonly slowestLatencyMs: number;
+}
+
+// Resilience & Fault-Tolerance Engine Contracts
+export interface ResilienceRetryPolicy {
+  readonly maxAttempts: number;
+  readonly baseDelayMs?: number | undefined;
+  readonly multiplier?: number | undefined;
+  readonly maxDelayMs?: number | undefined;
+  readonly jitter?: number | undefined;
+}
+
+export interface ResilienceTimeoutPolicy {
+  readonly timeoutMs: number;
+}
+
+export interface CircuitBreakerPolicy {
+  readonly failureThreshold: number;
+  readonly resetTimeoutMs: number;
+}
+
+export interface BulkheadPolicy {
+  readonly maxConcurrent: number;
+  readonly maxQueueSize?: number | undefined;
+}
+
+export interface ResilienceExecutionOptions {
+  readonly retry?: ResilienceRetryPolicy | undefined;
+  readonly timeout?: ResilienceTimeoutPolicy | undefined;
+  readonly circuitBreaker?: CircuitBreakerPolicy | undefined;
+  readonly bulkhead?: BulkheadPolicy | undefined;
+  readonly signal?: AbortSignal | undefined;
+  readonly shouldRetry?: ((error: unknown, attempt: number) => boolean) | undefined;
+  readonly fallback?:
+    ((error: unknown, signal: AbortSignal) => Promise<unknown> | unknown) | undefined;
+}
+
+export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+
+export interface ResilienceExecutor {
+  execute<T>(
+    operation: (signal: AbortSignal) => Promise<T> | T,
+    options?: ResilienceExecutionOptions,
+  ): Promise<T>;
+}
+
+export interface ResilienceManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  executor(): ResilienceExecutor;
+
+  readonly ready: boolean;
+}
+
+export interface ResilienceDiagnosticsSnapshot {
+  readonly totalExecutions: number;
+  readonly successfulExecutions: number;
+  readonly failedExecutions: number;
+  readonly retryCount: number;
+  readonly timeoutCount: number;
+  readonly cancellationCount: number;
+  readonly fallbackExecutions: number;
+  readonly fallbackFailures: number;
+  readonly circuitOpenRejections: number;
+  readonly circuitTransitions: number;
+  readonly bulkheadRejections: number;
+  readonly classifierFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+}
+
+// Metrics & Telemetry Engine Contracts
+export type MetricType = 'COUNTER' | 'GAUGE' | 'HISTOGRAM' | 'TIMER';
+
+export type MetricLabels = Readonly<Record<string, string>>;
+
+export interface HistogramOptions {
+  readonly buckets: readonly number[];
+}
+
+export interface MetricDefinition {
+  readonly name: string;
+  readonly type: MetricType;
+  readonly description?: string | undefined;
+  readonly histogram?: HistogramOptions | undefined;
+}
+
+export interface MetricSnapshot {
+  readonly name: string;
+  readonly type: MetricType;
+  readonly labels: MetricLabels;
+  readonly value: number;
+  readonly count?: number | undefined;
+  readonly sum?: number | undefined;
+  readonly buckets?: Readonly<Record<string, number>> | undefined;
+}
+
+export interface MetricsProvider {
+  register(definition: MetricDefinition): void;
+  incrementCounter(name: string, value: number, labels?: MetricLabels): void;
+  setGauge(name: string, value: number, labels?: MetricLabels): void;
+  incrementGauge(name: string, value: number, labels?: MetricLabels): void;
+  observeHistogram(name: string, value: number, labels?: MetricLabels): void;
+  snapshot(): Promise<readonly MetricSnapshot[]>;
+  reset(name?: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+export interface MetricTimer {
+  stop(): number;
+}
+
+export interface Metrics {
+  register(definition: MetricDefinition): void;
+  counter(
+    name: string,
+    labels?: MetricLabels,
+  ): {
+    increment(value?: number): void;
+  };
+  gauge(
+    name: string,
+    labels?: MetricLabels,
+  ): {
+    set(value: number): void;
+    increment(value?: number): void;
+    decrement(value?: number): void;
+  };
+  histogram(
+    name: string,
+    labels?: MetricLabels,
+  ): {
+    observe(value: number): void;
+  };
+  timer(name: string, labels?: MetricLabels): MetricTimer;
+  snapshot(): Promise<readonly MetricSnapshot[]>;
+  reset(name?: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+export interface MetricsManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  readonly ready: boolean;
+  metrics(): Metrics;
+}
+
+export interface MetricsDiagnosticsSnapshot {
+  readonly totalRegistrations: number;
+  readonly registrationFailures: number;
+  readonly totalCounterUpdates: number;
+  readonly totalGaugeUpdates: number;
+  readonly totalHistogramObservations: number;
+  readonly totalTimerObservations: number;
+  readonly cardinalityRejections: number;
+  readonly providerFailures: number;
+  readonly averageOperationLatencyMs: number;
+  readonly slowestOperationLatencyMs: number;
+}
