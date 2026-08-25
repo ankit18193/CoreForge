@@ -43,6 +43,7 @@
       "@coreforge/request-scope": ["packages/framework/request-scope/src/index.ts"],
       "@coreforge/rate-limit": ["packages/framework/rate-limit/src/index.ts"],
       "@coreforge/resilience": ["packages/framework/resilience/src/index.ts"],
+      "@coreforge/tracing": ["packages/framework/tracing/src/index.ts"],
       "@coreforge/action-invoker": ["packages/framework/action-invoker/src/index.ts"],
       "@coreforge/serialization": ["packages/framework/serialization/src/index.ts"],
       "@coreforge/security": ["packages/framework/security/src/index.ts"],

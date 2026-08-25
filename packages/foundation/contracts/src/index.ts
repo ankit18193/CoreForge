@@ -1254,3 +1254,97 @@ export interface MetricsDiagnosticsSnapshot {
   readonly averageOperationLatencyMs: number;
   readonly slowestOperationLatencyMs: number;
 }
+
+// Distributed Tracing & Correlation Context Engine Contracts
+export interface TraceContext {
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly parentSpanId?: string | undefined;
+  readonly sampled: boolean;
+}
+
+export type SpanStatus = 'UNSET' | 'OK' | 'ERROR' | 'CANCELLED';
+
+export type SpanState = 'CREATED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface SpanEvent {
+  readonly name: string;
+  readonly timestamp: number;
+  readonly attributes?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface SpanLink {
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly attributes?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface SpanSnapshot {
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly parentSpanId?: string | undefined;
+  readonly name: string;
+  readonly state: SpanState;
+  readonly status: SpanStatus;
+  readonly sampled: boolean;
+  readonly startTime: number;
+  readonly endTime?: number | undefined;
+  readonly durationMs?: number | undefined;
+  readonly attributes: Readonly<Record<string, unknown>>;
+  readonly events: readonly SpanEvent[];
+  readonly links: readonly SpanLink[];
+}
+
+export interface TraceSnapshot {
+  readonly traceId: string;
+  readonly sampled: boolean;
+  readonly spans: readonly SpanSnapshot[];
+}
+
+export interface Span {
+  readonly context: TraceContext;
+  setAttribute(key: string, value: unknown): Span;
+  setAttributes(attributes: Readonly<Record<string, unknown>>): Span;
+  addEvent(name: string, attributes?: Readonly<Record<string, unknown>>): Span;
+  addLink(context: TraceContext, attributes?: Readonly<Record<string, unknown>>): Span;
+  setStatus(status: SpanStatus): Span;
+  end(status?: SpanStatus): void;
+  snapshot(): SpanSnapshot;
+  readonly ended: boolean;
+}
+
+export interface TraceProvider {
+  record(span: SpanSnapshot): Promise<void>;
+  snapshot(traceId?: string): Promise<readonly SpanSnapshot[]>;
+  clear(): Promise<void>;
+}
+
+export interface TraceStartOptions {
+  readonly sampled?: boolean | undefined;
+  readonly attributes?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface TraceManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  startTrace(name: string, options?: TraceStartOptions): Span;
+  startSpan(name: string, parent?: TraceContext): Span;
+  withContext<T>(context: TraceContext, fn: () => Promise<T> | T): Promise<T>;
+  current(): TraceContext | undefined;
+  readonly ready: boolean;
+}
+
+export interface TraceDiagnosticsSnapshot {
+  readonly totalTraces: number;
+  readonly totalSpans: number;
+  readonly completedSpans: number;
+  readonly failedSpans: number;
+  readonly cancelledSpans: number;
+  readonly activeSpans: number;
+  readonly providerFailures: number;
+  readonly attributeLimitRejections: number;
+  readonly eventLimitRejections: number;
+  readonly linkLimitRejections: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+}

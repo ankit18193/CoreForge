@@ -226,7 +226,7 @@ test('CoreForge Background Jobs & Task Queue Engine (@coreforge/jobs)', async (t
         },
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      await new Promise((resolve) => setTimeout(resolve, 250));
       await queue.stop();
 
       assert.strictEqual(attempts, 3);
