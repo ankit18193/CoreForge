@@ -1,7 +1,7 @@
 import {
   ActionDescriptor,
+  ActionExecutionContext,
   ExecutionActionInvoker,
-  ExecutionContext,
   ExecutionEngine,
   ExecutionResult,
   InjectionToken,
@@ -10,10 +10,11 @@ import {
 } from '@coreforge/contracts';
 
 export type ActionInvoker = ExecutionActionInvoker;
+export type ExecutionContext = ActionExecutionContext;
 
 export type {
   ActionDescriptor,
-  ExecutionContext,
+  ActionExecutionContext,
   ExecutionEngine,
   ExecutionResult,
   InjectionToken,

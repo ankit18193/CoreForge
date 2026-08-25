@@ -506,7 +506,7 @@ export interface ActionDescriptor {
   readonly interceptors: readonly InjectionToken[];
 }
 
-export interface ExecutionContext {
+export interface ActionExecutionContext {
   readonly requestContext: RequestContext;
   readonly action: ActionDescriptor;
   readonly request: unknown;
@@ -515,7 +515,7 @@ export interface ExecutionContext {
 }
 
 export interface ExecutionActionInvoker {
-  invoke(context: ExecutionContext, arguments_: readonly unknown[]): Promise<unknown>;
+  invoke(context: ActionExecutionContext, arguments_: readonly unknown[]): Promise<unknown>;
 }
 
 export interface ExecutionEngine {
@@ -1347,4 +1347,59 @@ export interface TraceDiagnosticsSnapshot {
   readonly linkLimitRejections: number;
   readonly averageDurationMs: number;
   readonly slowestDurationMs: number;
+}
+
+// Application Execution Context Engine Contracts
+export type ExecutionState = 'CREATED' | 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface ExecutionContext {
+  readonly executionId: string;
+  readonly state: ExecutionState;
+  readonly parentExecutionId?: string | undefined;
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly signal: AbortSignal;
+  readonly createdAt: number;
+  readonly startedAt?: number | undefined;
+  readonly completedAt?: number | undefined;
+  readonly durationMs?: number | undefined;
+
+  start(): void;
+  complete(): void;
+  fail(): void;
+  cancel(): void;
+
+  child(metadata?: Readonly<Record<string, unknown>>): ExecutionContext;
+}
+
+export interface ExecutionContextOptions {
+  readonly parent?: ExecutionContext | undefined;
+  readonly signal?: AbortSignal | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+  readonly autoStart?: boolean | undefined;
+}
+
+export interface ExecutionContextManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  create(options?: ExecutionContextOptions): ExecutionContext;
+
+  current(): ExecutionContext | undefined;
+
+  run<T>(context: ExecutionContext, callback: () => T | Promise<T>): T | Promise<T>;
+
+  readonly ready: boolean;
+}
+
+export interface ExecutionDiagnosticsSnapshot {
+  readonly totalContexts: number;
+  readonly activeContexts: number;
+  readonly completedContexts: number;
+  readonly failedContexts: number;
+  readonly cancelledContexts: number;
+  readonly childContexts: number;
+  readonly cancellationCount: number;
+  readonly metadataRejections: number;
+  readonly averageExecutionDurationMs: number;
+  readonly slowestExecutionDurationMs: number;
 }
