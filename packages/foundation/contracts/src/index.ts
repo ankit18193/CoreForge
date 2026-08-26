@@ -1563,3 +1563,58 @@ export interface DispatchDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activeDispatches: number;
 }
+
+// Application Query & Handler Resolution Contracts
+export interface Query<TPayload = unknown> {
+  readonly type: string;
+  readonly payload: TPayload;
+}
+
+export interface QueryHandler<TPayload = unknown, TResult = unknown> {
+  execute(payload: TPayload, context: ExecutionContext): Promise<TResult> | TResult;
+}
+
+export interface QueryOptions {
+  readonly context?: ExecutionContext | undefined;
+}
+
+export interface QueryResult<TResult = unknown> {
+  readonly success: boolean;
+  readonly value?: TResult | undefined;
+  readonly error?: unknown;
+  readonly queryType: string;
+  readonly executionId: string;
+  readonly durationMs: number;
+  readonly state: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+}
+
+export interface QueryBus {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  register<TPayload = unknown, TResult = unknown>(
+    type: string,
+    handler: QueryHandler<TPayload, TResult>,
+  ): void;
+
+  query<TPayload = unknown, TResult = unknown>(
+    query: Query<TPayload>,
+    options?: QueryOptions,
+  ): Promise<QueryResult<TResult>>;
+
+  readonly ready: boolean;
+}
+
+export interface QueryDiagnosticsSnapshot {
+  readonly totalQueries: number;
+  readonly completedQueries: number;
+  readonly failedQueries: number;
+  readonly cancelledQueries: number;
+  readonly handlerNotFound: number;
+  readonly registrationFailures: number;
+  readonly handlerExecutions: number;
+  readonly handlerFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activeQueries: number;
+}

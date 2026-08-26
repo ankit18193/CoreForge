@@ -58,6 +58,7 @@
       "@coreforge/routing": ["packages/framework/routing/src/index.ts"],
       "@coreforge/execution": ["packages/framework/execution/src/index.ts"],
       "@coreforge/dispatch": ["packages/framework/dispatch/src/index.ts"],
+      "@coreforge/query": ["packages/framework/query/src/index.ts"],
       "@coreforge/response": ["packages/framework/response/src/index.ts"],
       "@coreforge/transport": ["packages/framework/transport/src/index.ts"],
       "@coreforge/discovery": ["packages/framework/discovery/src/index.ts"],

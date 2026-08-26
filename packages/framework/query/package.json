@@ -1,0 +1,21 @@
+{
+  "name": "@coreforge/query",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Application Query & Handler Resolution Engine for CoreForge",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@coreforge/contracts": "0.1.0",
+    "@coreforge/errors": "0.1.0",
+    "@coreforge/execution": "0.1.0",
+    "@coreforge/execution-context": "0.1.0",
+    "@coreforge/interceptors": "0.1.0",
+    "@coreforge/types": "0.1.0",
+    "@coreforge/utils": "0.1.0"
+  }
+}
