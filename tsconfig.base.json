@@ -57,6 +57,7 @@
       "@coreforge/parameter-binding": ["packages/framework/parameter-binding/src/index.ts"],
       "@coreforge/routing": ["packages/framework/routing/src/index.ts"],
       "@coreforge/execution": ["packages/framework/execution/src/index.ts"],
+      "@coreforge/dispatch": ["packages/framework/dispatch/src/index.ts"],
       "@coreforge/response": ["packages/framework/response/src/index.ts"],
       "@coreforge/transport": ["packages/framework/transport/src/index.ts"],
       "@coreforge/discovery": ["packages/framework/discovery/src/index.ts"],

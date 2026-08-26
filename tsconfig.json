@@ -45,6 +45,7 @@
     { "path": "packages/framework/parameter-binding" },
     { "path": "packages/framework/routing" },
     { "path": "packages/framework/execution" },
+    { "path": "packages/framework/dispatch" },
     { "path": "packages/framework/response" },
     { "path": "packages/framework/transport" },
     { "path": "packages/framework/runtime" },

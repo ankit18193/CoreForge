@@ -1508,3 +1508,58 @@ export interface InterceptorDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activeExecutions: number;
 }
+
+// Application Command & Handler Dispatch Contracts
+export interface Command<TPayload = unknown> {
+  readonly type: string;
+  readonly payload: TPayload;
+}
+
+export interface CommandHandler<TPayload = unknown, TResult = unknown> {
+  execute(payload: TPayload, context: ExecutionContext): Promise<TResult> | TResult;
+}
+
+export interface DispatchOptions {
+  readonly context?: ExecutionContext | undefined;
+}
+
+export interface DispatchResult<TResult = unknown> {
+  readonly success: boolean;
+  readonly value?: TResult | undefined;
+  readonly error?: unknown;
+  readonly commandType: string;
+  readonly executionId: string;
+  readonly durationMs: number;
+  readonly state: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+}
+
+export interface Dispatcher {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  register<TPayload = unknown, TResult = unknown>(
+    type: string,
+    handler: CommandHandler<TPayload, TResult>,
+  ): void;
+
+  dispatch<TPayload = unknown, TResult = unknown>(
+    command: Command<TPayload>,
+    options?: DispatchOptions,
+  ): Promise<DispatchResult<TResult>>;
+
+  readonly ready: boolean;
+}
+
+export interface DispatchDiagnosticsSnapshot {
+  readonly totalDispatches: number;
+  readonly completedDispatches: number;
+  readonly failedDispatches: number;
+  readonly cancelledDispatches: number;
+  readonly handlerNotFound: number;
+  readonly registrationFailures: number;
+  readonly handlerExecutions: number;
+  readonly handlerFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activeDispatches: number;
+}
