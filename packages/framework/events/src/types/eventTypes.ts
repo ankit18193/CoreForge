@@ -1,6 +1,6 @@
 import {
-  ApplicationEventDiagnosticsSnapshot as EventDiagnosticsSnapshot,
   Event,
+  EventDiagnosticsSnapshot,
   EventExecutionMode,
   EventFailureStrategy,
   EventHandler,

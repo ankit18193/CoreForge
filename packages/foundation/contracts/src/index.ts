@@ -859,7 +859,7 @@ export interface EventBus {
   ): EventSubscription;
 }
 
-export interface EventDiagnosticsSnapshot {
+export interface DomainEventDiagnosticsSnapshot {
   readonly totalEvents: number;
   readonly successfulEvents: number;
   readonly failedEvents: number;
@@ -1731,7 +1731,7 @@ export interface EventPublisher {
   readonly ready: boolean;
 }
 
-export interface ApplicationEventDiagnosticsSnapshot {
+export interface EventDiagnosticsSnapshot {
   readonly totalPublications: number;
   readonly successfulPublications: number;
   readonly failedPublications: number;
