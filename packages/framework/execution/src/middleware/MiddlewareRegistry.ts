@@ -5,12 +5,10 @@ import {
 import { ExecutionMiddleware } from '../types/executionTypes';
 
 export class MiddlewareRegistry {
-  private readonly _middlewares: ExecutionMiddleware<any, any>[] = [];
+  private readonly _middlewares: ExecutionMiddleware<unknown, unknown>[] = [];
   private _locked = false;
 
-  public register<TInput, TResult>(
-    middleware: ExecutionMiddleware<TInput, TResult>,
-  ): void {
+  public register<TInput, TResult>(middleware: ExecutionMiddleware<TInput, TResult>): void {
     if (this._locked) {
       throw new ExecutionMiddlewareRegistrationError(
         'Cannot register middleware after execution engine is READY',
@@ -31,14 +29,14 @@ export class MiddlewareRegistry {
       );
     }
 
-    this._middlewares.push(middleware);
+    this._middlewares.push(middleware as ExecutionMiddleware<unknown, unknown>);
   }
 
   public lock(): void {
     this._locked = true;
   }
 
-  public getSnapshot(): readonly ExecutionMiddleware<any, any>[] {
+  public getSnapshot(): readonly ExecutionMiddleware<unknown, unknown>[] {
     return Object.freeze([...this._middlewares]);
   }
 

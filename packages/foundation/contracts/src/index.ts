@@ -1411,11 +1411,7 @@ export type ExecutionHandler<TInput = unknown, TResult = unknown> = (
 ) => Promise<TResult> | TResult;
 
 export interface ExecutionMiddleware<TInput = unknown, TResult = unknown> {
-  execute(
-    input: TInput,
-    context: ExecutionContext,
-    next: () => Promise<TResult>,
-  ): Promise<TResult>;
+  execute(input: TInput, context: ExecutionContext, next: () => Promise<TResult>): Promise<TResult>;
 }
 
 export interface ExecutionResult<TResult = unknown> {
@@ -1435,9 +1431,7 @@ export interface ExecutionEngine {
   start(): Promise<void>;
   stop(): Promise<void>;
 
-  use<TInput = unknown, TResult = unknown>(
-    middleware: ExecutionMiddleware<TInput, TResult>,
-  ): void;
+  use<TInput = unknown, TResult = unknown>(middleware: ExecutionMiddleware<TInput, TResult>): void;
 
   execute<TInput = unknown, TResult = unknown>(
     input: TInput,
@@ -1461,4 +1455,3 @@ export interface ExecutionEngineDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activeExecutions: number;
 }
-

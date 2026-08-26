@@ -15,7 +15,7 @@ import {
 } from '@coreforge/decorators';
 import { ContainerBuilder } from '@coreforge/di';
 import { DiscoveryBuilder, DiscoveryEngine } from '@coreforge/discovery';
-import { ActionDescriptor, ExecutionEngine } from '@coreforge/execution';
+import { ActionDescriptor, ActionExecutionEngine as ExecutionEngine } from '@coreforge/execution';
 import { MetadataBuilder, MetadataRegistry } from '@coreforge/metadata';
 import { NormalizedRequest, ParameterBindingCompiler } from '@coreforge/parameter-binding';
 import { RequestContextManager } from '@coreforge/request-context';

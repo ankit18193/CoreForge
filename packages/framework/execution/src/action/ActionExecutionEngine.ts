@@ -1,15 +1,56 @@
+import { ActionExecutionContext } from './ActionExecutionContext';
 import {
   ActionDescriptor,
+  ActionMiddleware,
+  Guard,
   IActionExecutionEngine,
+  InjectionToken,
+  Interceptor,
+  ParameterBindingDescriptor,
   RequestContext,
 } from './ActionExecutionTypes';
-import { ActionExecutionContext } from './ActionExecutionContext';
-import { Guard, Interceptor, ActionMiddleware } from './ActionExecutionTypes';
-import {
-  GuardRejectedError,
-  InterceptorExecutionError,
-  MiddlewareExecutionError,
-} from '../errors/ExecutionErrors';
+import { GuardRejectedError } from '../errors/ExecutionErrors';
+
+function extractParameter(binding: ParameterBindingDescriptor, rawRequest: unknown): unknown {
+  const req = (rawRequest || {}) as {
+    params?: Record<string, unknown>;
+    query?: Record<string, unknown>;
+    body?: unknown;
+    headers?: Record<string, unknown>;
+    cookies?: Record<string, unknown>;
+  };
+
+  let value: unknown;
+  switch (binding.source) {
+    case 'PARAM':
+      value = binding.name ? req.params?.[binding.name] : req.params;
+      break;
+    case 'QUERY':
+      value = binding.name ? req.query?.[binding.name] : req.query;
+      break;
+    case 'BODY':
+      value =
+        binding.name && typeof req.body === 'object' && req.body !== null
+          ? (req.body as Record<string, unknown>)[binding.name]
+          : req.body;
+      break;
+    case 'HEADER':
+      value = binding.name ? req.headers?.[binding.name.toLowerCase()] : req.headers;
+      break;
+    case 'COOKIE':
+      value = binding.name ? req.cookies?.[binding.name] : req.cookies;
+      break;
+    default:
+      value = undefined;
+  }
+
+  const defVal = (binding as { defaultValue?: unknown }).defaultValue;
+  if (value === undefined && defVal !== undefined) {
+    value = defVal;
+  }
+
+  return value;
+}
 
 export class ActionExecutionEngine implements IActionExecutionEngine {
   public async execute(
@@ -22,7 +63,7 @@ export class ActionExecutionEngine implements IActionExecutionEngine {
     // 1. Execute Guards
     if (action.guards && action.guards.length > 0) {
       for (const guardToken of action.guards) {
-        const guard = await execContext.resolve<Guard>(guardToken as any);
+        const guard = await execContext.resolve<Guard>(guardToken as InjectionToken<Guard>);
         const canActivate = await guard.canActivate(execContext);
         if (!canActivate) {
           throw new GuardRejectedError('Guard rejected request', { guardToken });
@@ -34,16 +75,18 @@ export class ActionExecutionEngine implements IActionExecutionEngine {
     const args: unknown[] = [];
     if (action.parameterBindings && action.parameterBindings.length > 0) {
       for (const binding of action.parameterBindings) {
-        if ('resolve' in binding && typeof (binding as any).resolve === 'function') {
-          args[binding.parameterIndex] = await (binding as any).resolve(context, request);
-        } else {
-          args[binding.parameterIndex] = undefined;
-        }
+        args[binding.parameterIndex] = extractParameter(binding, request);
       }
     }
 
     // 3. Obtain Controller Instance
-    const controller = await execContext.resolve<any>(action.controllerToken as any);
+    const controller = await execContext.resolve<
+      Record<string | symbol, (...parameters: unknown[]) => unknown>
+    >(
+      action.controllerToken as InjectionToken<
+        Record<string | symbol, (...parameters: unknown[]) => unknown>
+      >,
+    );
 
     // 4. Build Middleware & Interceptor Pipeline
     const executeAction = async (): Promise<unknown> => {
@@ -61,18 +104,10 @@ export class ActionExecutionEngine implements IActionExecutionEngine {
       for (const token of interceptorTokens) {
         const nextRunner = runner;
         runner = async () => {
-          try {
-            const interceptor = await execContext.resolve<Interceptor>(token as any);
-            return await interceptor.intercept(execContext, nextRunner);
-          } catch (err: unknown) {
-            if (err instanceof GuardRejectedError) {
-              throw err;
-            }
-            throw new InterceptorExecutionError(
-              (err as Error)?.message || 'Interceptor execution failed',
-              err,
-            );
-          }
+          const interceptor = await execContext.resolve<Interceptor>(
+            token as InjectionToken<Interceptor>,
+          );
+          return interceptor.intercept(execContext, nextRunner);
         };
       }
     }
@@ -83,18 +118,10 @@ export class ActionExecutionEngine implements IActionExecutionEngine {
       for (const token of middlewareTokens) {
         const nextRunner = runner;
         runner = async () => {
-          try {
-            const mw = await execContext.resolve<ActionMiddleware>(token as any);
-            return await mw.handle(execContext, nextRunner);
-          } catch (err: unknown) {
-            if (err instanceof GuardRejectedError || err instanceof InterceptorExecutionError) {
-              throw err;
-            }
-            throw new MiddlewareExecutionError(
-              (err as Error)?.message || 'Middleware execution failed',
-              err,
-            );
-          }
+          const mw = await execContext.resolve<ActionMiddleware>(
+            token as InjectionToken<ActionMiddleware>,
+          );
+          return mw.handle(execContext, nextRunner);
         };
       }
     }

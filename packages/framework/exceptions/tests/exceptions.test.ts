@@ -8,8 +8,8 @@ import { DiscoveryBuilder, DiscoveryEngine } from '@coreforge/discovery';
 import { CoreForgeError, ValidationError } from '@coreforge/errors';
 import {
   ActionDescriptor,
-  ExecutionContext,
-  ExecutionEngine,
+  ActionExecutionContext as ExecutionContext,
+  ActionExecutionEngine as ExecutionEngine,
   Guard,
   GuardRejectedError,
 } from '@coreforge/execution';

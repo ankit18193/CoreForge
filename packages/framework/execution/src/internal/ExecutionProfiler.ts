@@ -1,23 +1,16 @@
 export class ExecutionProfiler {
-  private _startTime = 0;
-  private _endTime = 0;
-  private _running = false;
+  private _startTime: bigint = 0n;
 
-  public start(): void {
-    this._startTime = performance.now();
-    this._running = true;
+  public start(): this {
+    this._startTime = process.hrtime.bigint();
+    return this;
   }
 
-  public stop(): number {
-    if (this._running) {
-      this._endTime = performance.now();
-      this._running = false;
+  public get elapsedMs(): number {
+    if (this._startTime === 0n) {
+      return 0;
     }
-    return this.durationMs;
-  }
-
-  public get durationMs(): number {
-    const end = this._running ? performance.now() : this._endTime;
-    return Math.max(0, end - this._startTime);
+    const diff = process.hrtime.bigint() - this._startTime;
+    return Number(diff) / 1_000_000;
   }
 }

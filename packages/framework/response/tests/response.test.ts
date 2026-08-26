@@ -17,11 +17,11 @@ import { ContainerBuilder } from '@coreforge/di';
 import { DiscoveryBuilder, DiscoveryEngine } from '@coreforge/discovery';
 import {
   ActionDescriptor,
-  ExecutionContext,
-  ExecutionEngine,
+  ActionExecutionContext as ExecutionContext,
+  ActionExecutionEngine as ExecutionEngine,
+  ActionMiddleware as Middleware,
   Guard,
   Interceptor,
-  Middleware,
 } from '@coreforge/execution';
 import { MetadataBuilder, MetadataRegistry } from '@coreforge/metadata';
 import { NormalizedRequest, ParameterBindingCompiler } from '@coreforge/parameter-binding';

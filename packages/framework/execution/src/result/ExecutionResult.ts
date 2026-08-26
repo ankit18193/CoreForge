@@ -34,10 +34,7 @@ export class ExecutionResultFactory {
     value: TResult,
     durationMs: number,
   ): ExecutionResult<TResult> {
-    const frozenValue =
-      value !== null && typeof value === 'object'
-        ? deepFreeze(value)
-        : value;
+    const frozenValue = value !== null && typeof value === 'object' ? deepFreeze(value) : value;
 
     return Object.freeze({
       success: true,
@@ -48,11 +45,11 @@ export class ExecutionResultFactory {
     });
   }
 
-  public static createFailure(
+  public static createFailure<TResult = unknown>(
     executionId: string,
     error: unknown,
     durationMs: number,
-  ): ExecutionResult<any> {
+  ): ExecutionResult<TResult> {
     return Object.freeze({
       success: false,
       error,
@@ -62,11 +59,11 @@ export class ExecutionResultFactory {
     });
   }
 
-  public static createCancelled(
+  public static createCancelled<TResult = unknown>(
     executionId: string,
     error: unknown,
     durationMs: number,
-  ): ExecutionResult<any> {
+  ): ExecutionResult<TResult> {
     return Object.freeze({
       success: false,
       error,

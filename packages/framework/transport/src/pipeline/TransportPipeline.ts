@@ -1,5 +1,5 @@
 import { ErrorResponseMapper, ExceptionContext, ExceptionPipeline } from '@coreforge/exceptions';
-import { ActionDescriptor, ExecutionEngine } from '@coreforge/execution';
+import { ActionDescriptor, ActionExecutionEngine } from '@coreforge/execution';
 import { ContextCancelledError, RequestContextManager } from '@coreforge/request-context';
 import { ResponseProcessor } from '@coreforge/response';
 
@@ -21,7 +21,7 @@ import {
 
 export interface TransportPipelineOptions {
   readonly contextManager: RequestContextManager;
-  readonly executionEngine: ExecutionEngine;
+  readonly executionEngine: ActionExecutionEngine;
   readonly responseProcessor: ResponseProcessor;
   readonly exceptionPipeline: ExceptionPipeline;
   readonly normalizer?: TransportRequestNormalizer | undefined;
@@ -31,7 +31,7 @@ export interface TransportPipelineOptions {
 
 export class TransportPipeline {
   private readonly _contextManager: RequestContextManager;
-  private readonly _executionEngine: ExecutionEngine;
+  private readonly _executionEngine: ActionExecutionEngine;
   private readonly _responseProcessor: ResponseProcessor;
   private readonly _exceptionPipeline: ExceptionPipeline;
   private readonly _normalizer: TransportRequestNormalizer;

@@ -1,9 +1,6 @@
 import { ExecutionContext } from '@coreforge/contracts';
 
-import {
-  ExecutionCancellationError,
-  ExecutionMiddlewareError,
-} from '../errors/ExecutionErrors';
+import { ExecutionCancellationError, ExecutionMiddlewareError } from '../errors/ExecutionErrors';
 import { ExecutionMiddleware } from '../types/executionTypes';
 
 export interface ChainHooks {
@@ -15,7 +12,7 @@ export class MiddlewareChain {
   public static async run<TInput, TResult>(
     input: TInput,
     context: ExecutionContext,
-    middlewares: readonly ExecutionMiddleware<any, any>[],
+    middlewares: readonly ExecutionMiddleware<unknown, unknown>[],
     terminalHandler: () => Promise<TResult>,
     hooks: ChainHooks,
   ): Promise<{ result: TResult; handlerExecuted: boolean }> {
@@ -39,7 +36,11 @@ export class MiddlewareChain {
 
       const middleware = middlewares[i];
       try {
-        const res = await middleware.execute(input, context, () => dispatch(i + 1));
+        const res = await middleware.execute(
+          input,
+          context,
+          () => dispatch(i + 1) as Promise<unknown>,
+        );
         hooks.onMiddlewareExecuted();
         return res as TResult;
       } catch (err: unknown) {

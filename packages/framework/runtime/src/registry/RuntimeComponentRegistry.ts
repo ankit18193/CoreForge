@@ -1,6 +1,6 @@
 import { Container } from '@coreforge/di';
 import { ExceptionPipeline } from '@coreforge/exceptions';
-import { ExecutionEngine } from '@coreforge/execution';
+import { ActionExecutionEngine } from '@coreforge/execution';
 import { MetadataRegistry } from '@coreforge/metadata';
 import { ParameterBindingResolver } from '@coreforge/parameter-binding';
 import { RequestContextManager } from '@coreforge/request-context';
@@ -16,7 +16,7 @@ export interface RuntimeComponents {
   readonly requestContextManager?: RequestContextManager | undefined;
   readonly parameterBindingResolver?: ParameterBindingResolver | undefined;
   readonly routeMatcher?: RouteMatcher | undefined;
-  readonly executionEngine?: ExecutionEngine | undefined;
+  readonly executionEngine?: ActionExecutionEngine | undefined;
   readonly responseProcessor?: ResponseProcessor | undefined;
   readonly exceptionPipeline?: ExceptionPipeline | undefined;
   readonly transportPipeline?: TransportPipeline | undefined;
@@ -28,7 +28,7 @@ export class RuntimeComponentRegistry {
   private _requestContextManager?: RequestContextManager | undefined;
   private _parameterBindingResolver?: ParameterBindingResolver | undefined;
   private _routeMatcher?: RouteMatcher | undefined;
-  private _executionEngine?: ExecutionEngine | undefined;
+  private _executionEngine?: ActionExecutionEngine | undefined;
   private _responseProcessor?: ResponseProcessor | undefined;
   private _exceptionPipeline?: ExceptionPipeline | undefined;
   private _transportPipeline?: TransportPipeline | undefined;
@@ -92,13 +92,13 @@ export class RuntimeComponentRegistry {
     return this._routeMatcher;
   }
 
-  public setExecutionEngine(engine: ExecutionEngine): this {
+  public setExecutionEngine(engine: ActionExecutionEngine): this {
     this._ensureNotLocked();
     this._executionEngine = engine;
     return this;
   }
 
-  public get executionEngine(): ExecutionEngine | undefined {
+  public get executionEngine(): ActionExecutionEngine | undefined {
     return this._executionEngine;
   }
 

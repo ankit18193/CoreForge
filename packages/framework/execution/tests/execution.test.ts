@@ -1,835 +1,438 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { test } from 'node:test';
 
-import { CompilerBuilder, ModuleCompiler } from '@coreforge/compiler';
-import {
-  Body,
-  Controller,
-  Get,
-  Header,
-  MetadataRegistrar,
-  Module,
-  Param,
-  Post,
-  Query,
-} from '@coreforge/decorators';
-import { ContainerBuilder } from '@coreforge/di';
-import { DiscoveryBuilder, DiscoveryEngine } from '@coreforge/discovery';
-import { MetadataBuilder, MetadataRegistry } from '@coreforge/metadata';
-import { NormalizedRequest, ParameterBindingCompiler } from '@coreforge/parameter-binding';
-import { RequestContextManager } from '@coreforge/request-context';
+import { ExecutionContextManager } from '@coreforge/execution-context';
 
 import {
-  ActionDescriptor,
-  ActionNotFoundError,
-  ControllerResolutionError,
-  ExecutionContext,
+  ExecutionCancellationError,
   ExecutionEngine,
-  ExecutionStateError,
-  Guard,
-  GuardRejectedError,
-  Interceptor,
-  Middleware,
-} from '../index';
+  ExecutionEngineBuilder,
+  ExecutionEngineStateError,
+  ExecutionMiddleware,
+  ExecutionMiddlewareRegistrationError,
+} from '../src/index';
 
-test('CoreForge Action Execution & Request Pipeline Engine (@coreforge/execution)', async (t) => {
+test('CoreForge Application Execution Pipeline Engine (@coreforge/execution)', async (t) => {
   await t.test(
-    '1. Synchronous and asynchronous action execution on controller resolved through DI',
+    '1. Lifecycle: Cannot execute before start(), start() is idempotent, works after READY',
     async () => {
-      class UserController {
-        public getSync(id: string): string {
-          return `sync-user-${id}`;
-        }
-
-        public async getAsync(id: string): Promise<string> {
-          return `async-user-${id}`;
-        }
-      }
-
-      const container = new ContainerBuilder()
-        .register({ token: UserController, useClass: UserController, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
-
-      const contextManager = new RequestContextManager(container);
-      const reqContext = await contextManager.createContext();
-
       const engine = new ExecutionEngine();
+      assert.strictEqual(engine.ready, false);
 
-      const syncAction: ActionDescriptor = {
-        id: 'UserController:getSync',
-        controllerToken: UserController,
-        methodName: 'getSync',
-        parameterBindings: [
-          {
-            id: 'p1',
-            actionId: 'UserController:getSync',
-            parameterIndex: 0,
-            source: 'PARAM',
-            name: 'id',
-            required: true,
-          },
-        ],
-        guards: [],
-        middleware: [],
-        interceptors: [],
-      };
+      await assert.rejects(
+        async () => engine.execute({ task: '1' }, async (input) => input),
+        (err: Error) => err instanceof ExecutionEngineStateError,
+      );
 
-      const asyncAction: ActionDescriptor = {
-        id: 'UserController:getAsync',
-        controllerToken: UserController,
-        methodName: 'getAsync',
-        parameterBindings: [
-          {
-            id: 'p2',
-            actionId: 'UserController:getAsync',
-            parameterIndex: 0,
-            source: 'PARAM',
-            name: 'id',
-            required: true,
-          },
-        ],
-        guards: [],
-        middleware: [],
-        interceptors: [],
-      };
+      await engine.start();
+      assert.strictEqual(engine.ready, true);
 
-      const request: NormalizedRequest = { params: { id: '42' } };
+      // Idempotent start()
+      await engine.start();
+      assert.strictEqual(engine.ready, true);
 
-      const syncRes = await engine.execute(syncAction, request, reqContext);
-      const asyncRes = await engine.execute(asyncAction, request, reqContext);
+      const result = await engine.execute({ task: '1' }, async (input) => ({
+        ...input,
+        done: true,
+      }));
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.state, 'COMPLETED');
+      assert.deepStrictEqual(result.value, { task: '1', done: true });
 
-      assert.strictEqual(syncRes, 'sync-user-42');
-      assert.strictEqual(asyncRes, 'async-user-42');
-
-      await reqContext.dispose();
+      await engine.stop();
     },
   );
 
   await t.test(
-    '2. Parameter binding integration passes bound arguments to controller method unchanged',
+    '2. Lifecycle: Rejection of new executions during STOPPING and after STOPPED',
     async () => {
-      class ProductController {
-        public search(category: string, limit: number, authHeader: string, bodyData: unknown) {
-          return { category, limit, authHeader, bodyData };
-        }
-      }
+      const engine = new ExecutionEngine({ autoStart: true });
+      assert.strictEqual(engine.ready, true);
 
-      const container = new ContainerBuilder()
-        .register({ token: ProductController, useClass: ProductController, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
+      await engine.stop();
+      assert.strictEqual(engine.ready, false);
 
-      const contextManager = new RequestContextManager(container);
-      const reqContext = await contextManager.createContext();
+      await assert.rejects(
+        async () => engine.execute({ task: 'post_stop' }, async (input) => input),
+        (err: Error) => err instanceof ExecutionEngineStateError,
+      );
 
-      const engine = new ExecutionEngine();
-
-      const action: ActionDescriptor = {
-        id: 'ProductController:search',
-        controllerToken: ProductController,
-        methodName: 'search',
-        parameterBindings: [
-          {
-            id: 'b0',
-            actionId: 'ProductController:search',
-            parameterIndex: 0,
-            source: 'PARAM',
-            name: 'category',
-            required: true,
-          },
-          {
-            id: 'b1',
-            actionId: 'ProductController:search',
-            parameterIndex: 1,
-            source: 'QUERY',
-            name: 'limit',
-            required: false,
-          },
-          {
-            id: 'b2',
-            actionId: 'ProductController:search',
-            parameterIndex: 2,
-            source: 'HEADER',
-            name: 'authorization',
-            required: true,
-          },
-          {
-            id: 'b3',
-            actionId: 'ProductController:search',
-            parameterIndex: 3,
-            source: 'BODY',
-            name: 'filter',
-            required: false,
-          },
-        ],
-        guards: [],
-        middleware: [],
-        interceptors: [],
-      };
-
-      const request: NormalizedRequest = {
-        params: { category: 'electronics' },
-        query: { limit: 25 },
-        headers: { Authorization: 'Bearer token-abc' },
-        body: { filter: { inStock: true } },
-      };
-
-      const result = (await engine.execute(action, request, reqContext)) as {
-        category: string;
-        limit: number;
-        authHeader: string;
-        bodyData: unknown;
-      };
-
-      assert.strictEqual(result.category, 'electronics');
-      assert.strictEqual(result.limit, 25);
-      assert.strictEqual(result.authHeader, 'Bearer token-abc');
-      assert.deepStrictEqual(result.bodyData, { inStock: true });
-
-      await reqContext.dispose();
+      // Idempotent stop()
+      await engine.stop();
     },
   );
 
   await t.test(
-    '3. Guards execute deterministically and reject unauthorized requests before downstream execution',
+    '3. Deterministic Middleware Ordering & Unwinding (Outer->Inner before, Inner->Outer after)',
     async () => {
-      let guard1Executed = false;
-      let guard2Executed = false;
-      let controllerExecuted = false;
-
-      class AuthGuard implements Guard {
-        public canActivate(): boolean {
-          guard1Executed = true;
-          return true;
-        }
-      }
-
-      class RoleGuard implements Guard {
-        public canActivate(): boolean {
-          guard2Executed = true;
-          return false; // Reject!
-        }
-      }
-
-      class SecureController {
-        public secretAction() {
-          controllerExecuted = true;
-          return 'super-secret';
-        }
-      }
-
-      const container = new ContainerBuilder()
-        .register({ token: AuthGuard, useClass: AuthGuard, scope: 'REQUEST' })
-        .register({ token: RoleGuard, useClass: RoleGuard, scope: 'REQUEST' })
-        .register({ token: SecureController, useClass: SecureController, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
-
-      const contextManager = new RequestContextManager(container);
-      const reqContext = await contextManager.createContext();
-
+      const trace: string[] = [];
       const engine = new ExecutionEngine();
 
-      const action: ActionDescriptor = {
-        id: 'SecureController:secretAction',
-        controllerToken: SecureController,
-        methodName: 'secretAction',
-        parameterBindings: [],
-        guards: [AuthGuard, RoleGuard],
-        middleware: [],
-        interceptors: [],
+      const mw1: ExecutionMiddleware<string, string> = {
+        async execute(_input, _context, next) {
+          trace.push('mw1_before');
+          const res = await next();
+          trace.push('mw1_after');
+          return res;
+        },
       };
 
-      await assert.rejects(async () => {
-        await engine.execute(action, {}, reqContext);
-      }, GuardRejectedError);
-
-      assert.strictEqual(guard1Executed, true);
-      assert.strictEqual(guard2Executed, true);
-      assert.strictEqual(controllerExecuted, false);
-
-      await reqContext.dispose();
-    },
-  );
-
-  await t.test(
-    '4. Middleware executes before action, unwinds after action, and can transform results',
-    async () => {
-      const executionTrail: string[] = [];
-
-      class HeaderMiddleware implements Middleware {
-        public async handle(
-          _context: ExecutionContext,
-          next: () => Promise<unknown>,
-        ): Promise<unknown> {
-          executionTrail.push('middleware1-before');
-          const result = (await next()) as { value: string };
-          executionTrail.push('middleware1-after');
-          return { ...result, modifiedByMiddleware: true };
-        }
-      }
-
-      class LoggerMiddleware implements Middleware {
-        public async handle(
-          _context: ExecutionContext,
-          next: () => Promise<unknown>,
-        ): Promise<unknown> {
-          executionTrail.push('middleware2-before');
-          const result = await next();
-          executionTrail.push('middleware2-after');
-          return result;
-        }
-      }
-
-      class SimpleController {
-        public test() {
-          executionTrail.push('controller');
-          return { value: 'original' };
-        }
-      }
-
-      const container = new ContainerBuilder()
-        .register({ token: HeaderMiddleware, useClass: HeaderMiddleware, scope: 'REQUEST' })
-        .register({ token: LoggerMiddleware, useClass: LoggerMiddleware, scope: 'REQUEST' })
-        .register({ token: SimpleController, useClass: SimpleController, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
-
-      const contextManager = new RequestContextManager(container);
-      const reqContext = await contextManager.createContext();
-
-      const engine = new ExecutionEngine();
-
-      const action: ActionDescriptor = {
-        id: 'SimpleController:test',
-        controllerToken: SimpleController,
-        methodName: 'test',
-        parameterBindings: [],
-        guards: [],
-        middleware: [HeaderMiddleware, LoggerMiddleware],
-        interceptors: [],
+      const mw2: ExecutionMiddleware<string, string> = {
+        async execute(_input, _context, next) {
+          trace.push('mw2_before');
+          const res = await next();
+          trace.push('mw2_after');
+          return res;
+        },
       };
 
-      const result = (await engine.execute(action, {}, reqContext)) as {
-        value: string;
-        modifiedByMiddleware?: boolean;
-      };
+      engine.use(mw1);
+      engine.use(mw2);
+      await engine.start();
 
-      assert.deepStrictEqual(executionTrail, [
-        'middleware1-before',
-        'middleware2-before',
-        'controller',
-        'middleware2-after',
-        'middleware1-after',
-      ]);
-
-      assert.strictEqual(result.value, 'original');
-      assert.strictEqual(result.modifiedByMiddleware, true);
-
-      await reqContext.dispose();
-    },
-  );
-
-  await t.test(
-    '5. Interceptors execute around action, transform results, and observe/catch errors',
-    async () => {
-      const trail: string[] = [];
-
-      class TimingInterceptor implements Interceptor {
-        public async intercept(
-          _context: ExecutionContext,
-          next: () => Promise<unknown>,
-        ): Promise<unknown> {
-          trail.push('interceptor-before');
-          const result = await next();
-          trail.push('interceptor-after');
-          return { data: result, intercepted: true };
-        }
-      }
-
-      class SampleController {
-        public getData() {
-          trail.push('controller');
-          return 'hello-world';
-        }
-      }
-
-      const container = new ContainerBuilder()
-        .register({ token: TimingInterceptor, useClass: TimingInterceptor, scope: 'REQUEST' })
-        .register({ token: SampleController, useClass: SampleController, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
-
-      const contextManager = new RequestContextManager(container);
-      const reqContext = await contextManager.createContext();
-
-      const engine = new ExecutionEngine();
-
-      const action: ActionDescriptor = {
-        id: 'SampleController:getData',
-        controllerToken: SampleController,
-        methodName: 'getData',
-        parameterBindings: [],
-        guards: [],
-        middleware: [],
-        interceptors: [TimingInterceptor],
-      };
-
-      const res = (await engine.execute(action, {}, reqContext)) as {
-        data: string;
-        intercepted: boolean;
-      };
-
-      assert.deepStrictEqual(trail, ['interceptor-before', 'controller', 'interceptor-after']);
-
-      assert.strictEqual(res.data, 'hello-world');
-      assert.strictEqual(res.intercepted, true);
-
-      // Error catching interceptor
-      class ErrorCatchingInterceptor implements Interceptor {
-        public async intercept(
-          _context: ExecutionContext,
-          next: () => Promise<unknown>,
-        ): Promise<unknown> {
-          try {
-            return await next();
-          } catch (err) {
-            return { handledError: (err as Error).message };
-          }
-        }
-      }
-
-      class FailingController {
-        public fail() {
-          throw new Error('Database disconnected');
-        }
-      }
-
-      const container2 = new ContainerBuilder()
-        .register({
-          token: ErrorCatchingInterceptor,
-          useClass: ErrorCatchingInterceptor,
-          scope: 'REQUEST',
-        })
-        .register({ token: FailingController, useClass: FailingController, scope: 'REQUEST' })
-        .build();
-      container2.makeReady();
-
-      const reqContext2 = await new RequestContextManager(container2).createContext();
-
-      const failingAction: ActionDescriptor = {
-        id: 'FailingController:fail',
-        controllerToken: FailingController,
-        methodName: 'fail',
-        parameterBindings: [],
-        guards: [],
-        middleware: [],
-        interceptors: [ErrorCatchingInterceptor],
-      };
-
-      const errorRes = (await engine.execute(failingAction, {}, reqContext2)) as {
-        handledError: string;
-      };
-
-      assert.strictEqual(errorRes.handledError, 'Database disconnected');
-
-      await reqContext.dispose();
-      await reqContext2.dispose();
-    },
-  );
-
-  await t.test(
-    '6. 1,000 concurrent executions maintain complete request isolation and scoped DI resolution',
-    async () => {
-      class ScopedIdService {
-        private static _idCounter = 0;
-        public readonly id = ++ScopedIdService._idCounter;
-      }
-
-      class ParallelController {
-        constructor(private readonly _service: ScopedIdService) {}
-
-        public handle(reqId: string) {
-          return {
-            reqId,
-            serviceId: this._service.id,
-          };
-        }
-      }
-
-      const container = new ContainerBuilder()
-        .register({ token: ScopedIdService, useClass: ScopedIdService, scope: 'REQUEST' })
-        .register({
-          token: ParallelController,
-          useFactory: (service) => new ParallelController(service as ScopedIdService),
-          dependencies: [ScopedIdService],
-          scope: 'REQUEST',
-        })
-        .build();
-      container.makeReady();
-
-      const contextManager = new RequestContextManager(container);
-      const engine = new ExecutionEngine();
-
-      const action: ActionDescriptor = {
-        id: 'ParallelController:handle',
-        controllerToken: ParallelController,
-        methodName: 'handle',
-        parameterBindings: [
-          {
-            id: 'p0',
-            actionId: 'ParallelController:handle',
-            parameterIndex: 0,
-            source: 'PARAM',
-            name: 'reqId',
-            required: true,
-          },
-        ],
-        guards: [],
-        middleware: [],
-        interceptors: [],
-      };
-
-      const tasks = Array.from({ length: 1000 }, async (_, i) => {
-        const reqContext = await contextManager.createContext({ id: `ctx-${i}` });
-        try {
-          const req: NormalizedRequest = { params: { reqId: `req-${i}` } };
-          const result = (await engine.execute(action, req, reqContext)) as {
-            reqId: string;
-            serviceId: number;
-          };
-          return { i, reqId: result.reqId, serviceId: result.serviceId };
-        } finally {
-          await reqContext.dispose();
-        }
+      const result = await engine.execute<string, string>('payload', async (input) => {
+        trace.push('handler');
+        return `processed_${input}`;
       });
 
-      const results = await Promise.all(tasks);
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.value, 'processed_payload');
+      assert.deepStrictEqual(trace, [
+        'mw1_before',
+        'mw2_before',
+        'handler',
+        'mw2_after',
+        'mw1_after',
+      ]);
 
-      assert.strictEqual(results.length, 1000);
-      const seenServiceIds = new Set<number>();
-      for (let i = 0; i < 1000; i++) {
-        assert.strictEqual(results[i].reqId, `req-${i}`);
-        assert.ok(!seenServiceIds.has(results[i].serviceId));
-        seenServiceIds.add(results[i].serviceId);
-      }
+      await engine.stop();
     },
   );
 
-  await t.test('7. Lifecycle management blocks execution when STOPPED or STOPPING', async () => {
-    class TestController {
-      public run() {
-        return 'ok';
-      }
-    }
+  await t.test(
+    '4. Middleware Transformation & Error Handling: Transform results and catch errors',
+    async () => {
+      const engine = new ExecutionEngine();
 
-    const container = new ContainerBuilder()
-      .register({ token: TestController, useClass: TestController, scope: 'REQUEST' })
-      .build();
-    container.makeReady();
+      const transformMw: ExecutionMiddleware<number, number> = {
+        async execute(_input, _context, next) {
+          const res = await next();
+          return res * 2;
+        },
+      };
 
-    const reqContext = await new RequestContextManager(container).createContext();
+      const catchMw: ExecutionMiddleware<number, number> = {
+        async execute(_input, _context, next) {
+          try {
+            return await next();
+          } catch {
+            return 999;
+          }
+        },
+      };
 
-    const engine = new ExecutionEngine();
-    engine.stop();
+      engine.use(transformMw);
+      engine.use(catchMw);
+      await engine.start();
 
-    const action: ActionDescriptor = {
-      id: 'TestController:run',
-      controllerToken: TestController,
-      methodName: 'run',
-      parameterBindings: [],
-      guards: [],
-      middleware: [],
-      interceptors: [],
-    };
+      const result = await engine.execute<number, number>(10, async () => {
+        throw new Error('Downstream failure');
+      });
 
-    await assert.rejects(async () => {
-      await engine.execute(action, {}, reqContext);
-    }, ExecutionStateError);
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.value, 1998); // catchMw caught and returned 999, transformMw multiplied by 2 = 1998
 
-    await reqContext.dispose();
+      await engine.stop();
+    },
+  );
+
+  await t.test(
+    '5. Middleware Registration Immutability: Cannot register middleware after READY',
+    async () => {
+      const engine = new ExecutionEngine();
+      await engine.start();
+
+      const lateMw: ExecutionMiddleware = {
+        async execute(_input, _context, next) {
+          return next();
+        },
+      };
+
+      assert.throws(
+        () => engine.use(lateMw),
+        (err: Error) => err instanceof ExecutionMiddlewareRegistrationError,
+      );
+
+      await engine.stop();
+    },
+  );
+
+  await t.test('6. Exactly-Once Handler Execution & Result Preservation', async () => {
+    const engine = new ExecutionEngine({ autoStart: true });
+    let handlerInvocations = 0;
+
+    const result = await engine.execute<{ count: number }, { count: number; ok: boolean }>(
+      { count: 1 },
+      async (input) => {
+        handlerInvocations++;
+        return { ...input, ok: true };
+      },
+    );
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(handlerInvocations, 1);
+    assert.deepStrictEqual(result.value, { count: 1, ok: true });
+
+    await engine.stop();
+  });
+
+  await t.test('7. Handler Failure: Converts thrown error to FAILED result state', async () => {
+    const engine = new ExecutionEngine({ autoStart: true });
+
+    const result = await engine.execute<string, string>('test', async () => {
+      throw new Error('Database connection failed');
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.state, 'FAILED');
+    assert.strictEqual((result.error as Error).message, 'Database connection failed');
+
+    await engine.stop();
   });
 
   await t.test(
-    '8. Error handling produces deterministic errors for missing actions and controller resolution failures',
+    '8. Short-Circuit Semantics: Middleware terminates early without calling handler',
     async () => {
-      class IncompleteController {}
-
-      const container = new ContainerBuilder()
-        .register({ token: IncompleteController, useClass: IncompleteController, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
-
-      const reqContext = await new RequestContextManager(container).createContext();
-
       const engine = new ExecutionEngine();
+      let handlerCalled = false;
 
-      // Missing method
-      const missingMethodAction: ActionDescriptor = {
-        id: 'IncompleteController:nonExistent',
-        controllerToken: IncompleteController,
-        methodName: 'nonExistent',
-        parameterBindings: [],
-        guards: [],
-        middleware: [],
-        interceptors: [],
+      const shortCircuitMw: ExecutionMiddleware<string, { cached: boolean; data: string }> = {
+        async execute(_input, _context, _next) {
+          return { cached: true, data: 'instant_response' };
+        },
       };
 
-      await assert.rejects(async () => {
-        await engine.execute(missingMethodAction, {}, reqContext);
-      }, ActionNotFoundError);
+      engine.use(shortCircuitMw);
+      await engine.start();
 
-      // Unregistered controller token
-      const unregisteredTokenAction: ActionDescriptor = {
-        id: 'Unknown:act',
-        controllerToken: 'UnregisteredToken',
-        methodName: 'act',
-        parameterBindings: [],
-        guards: [],
-        middleware: [],
-        interceptors: [],
-      };
+      const result = await engine.execute<string, { cached: boolean; data: string }>(
+        'query',
+        async () => {
+          handlerCalled = true;
+          return { cached: false, data: 'live' };
+        },
+      );
 
-      await assert.rejects(async () => {
-        await engine.execute(unregisteredTokenAction, {}, reqContext);
-      }, ControllerResolutionError);
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(handlerCalled, false);
+      assert.deepStrictEqual(result.value, { cached: true, data: 'instant_response' });
 
-      await reqContext.dispose();
+      const diag = engine.getDiagnostics();
+      assert.strictEqual(diag.shortCircuitedExecutions, 1);
+      assert.strictEqual(diag.handlerExecutions, 0);
+
+      await engine.stop();
     },
   );
 
   await t.test(
-    '9. Diagnostics snapshots track execution metrics without leaking request payload data',
+    '9. Cancellation Semantics: Pre-cancelled and runtime cancellation produces CANCELLED state',
     async () => {
-      class MetricController {
-        public ok() {
-          return 'success';
-        }
+      const contextManager = new ExecutionContextManager();
+      const engine = new ExecutionEngine({ contextManager, autoStart: true });
 
-        public fail() {
-          throw new Error('Boom');
-        }
-      }
+      // 1. Pre-cancelled context
+      const preCancelledContext = contextManager.create();
+      preCancelledContext.cancel();
 
-      class RejectGuard implements Guard {
-        public canActivate(): boolean {
-          return false;
-        }
-      }
+      let handlerExecuted = false;
+      const preRes = await engine.execute<string, void>(
+        'data',
+        async () => {
+          handlerExecuted = true;
+        },
+        { context: preCancelledContext },
+      );
 
-      const container = new ContainerBuilder()
-        .register({ token: MetricController, useClass: MetricController, scope: 'REQUEST' })
-        .register({ token: RejectGuard, useClass: RejectGuard, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
+      assert.strictEqual(preRes.success, false);
+      assert.strictEqual(preRes.state, 'CANCELLED');
+      assert.strictEqual(handlerExecuted, false);
 
-      const reqContext = await new RequestContextManager(container).createContext();
+      // 2. Runtime cancellation during execution
+      const activeContext = contextManager.create();
+      const runRes = await engine.execute<string, string>(
+        'data',
+        async (_input, ctx) => {
+          ctx.cancel();
+          throw new ExecutionCancellationError('Operation was cancelled during processing');
+        },
+        { context: activeContext },
+      );
 
-      const engine = new ExecutionEngine({ enableDiagnostics: true });
+      assert.strictEqual(runRes.success, false);
+      assert.strictEqual(runRes.state, 'CANCELLED');
 
-      const okAction: ActionDescriptor = {
-        id: 'MetricController:ok',
-        controllerToken: MetricController,
-        methodName: 'ok',
-        parameterBindings: [],
-        guards: [],
-        middleware: [],
-        interceptors: [],
-      };
-
-      const failAction: ActionDescriptor = {
-        id: 'MetricController:fail',
-        controllerToken: MetricController,
-        methodName: 'fail',
-        parameterBindings: [],
-        guards: [],
-        middleware: [],
-        interceptors: [],
-      };
-
-      const rejectAction: ActionDescriptor = {
-        id: 'MetricController:reject',
-        controllerToken: MetricController,
-        methodName: 'ok',
-        parameterBindings: [],
-        guards: [RejectGuard],
-        middleware: [],
-        interceptors: [],
-      };
-
-      await engine.execute(okAction, { body: 'sensitive-password-123' }, reqContext);
-
-      try {
-        await engine.execute(failAction, {}, reqContext);
-      } catch {
-        // Expected
-      }
-
-      try {
-        await engine.execute(rejectAction, {}, reqContext);
-      } catch {
-        // Expected
-      }
-
-      const diag = engine.diagnostics;
-
-      assert.strictEqual(diag.totalExecutions, 3);
-      assert.strictEqual(diag.successfulExecutions, 1);
-      assert.strictEqual(diag.failedExecutions, 2);
-      assert.strictEqual(diag.guardRejections, 1);
-      assert.ok(diag.totalDurationMs >= 0);
-      assert.ok(diag.slowestDurationMs >= 0);
-      assert.ok(Object.isFrozen(diag));
-
-      await reqContext.dispose();
+      await engine.stop();
+      await contextManager.stop();
     },
   );
 
   await t.test(
-    '10. Full End-to-End Pipeline: Decorators -> MetadataCollector -> MetadataRegistrar -> MetadataRegistry -> Discovery -> Compiler -> DI Container -> RequestContextManager -> ParameterBindingCompiler -> ExecutionEngine -> Result',
+    '10. Context Scoping: Automatic context creation and AsyncLocalStorage current() lookup',
     async () => {
-      MetadataRegistrar.reset();
+      const contextManager = new ExecutionContextManager();
+      const engine = new ExecutionEngine({ contextManager, autoStart: true });
 
-      // 1. Pipeline components (Guard, Middleware, Interceptor)
-      class ApiKeyGuard implements Guard {
-        public canActivate(context: ExecutionContext): boolean {
-          const req = context.request as NormalizedRequest;
-          return req.headers?.['x-api-key'] === 'valid-secret-key';
-        }
+      let detectedExecutionId: string | undefined;
+
+      const result = await engine.execute<string, string>('ping', async (_input, context) => {
+        detectedExecutionId = contextManager.current()?.executionId;
+        assert.strictEqual(detectedExecutionId, context.executionId);
+        return 'pong';
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.executionId, detectedExecutionId);
+      assert.strictEqual(contextManager.current(), undefined);
+
+      await engine.stop();
+      await contextManager.stop();
+    },
+  );
+
+  await t.test('11. Result Immutability & Deep Isolation', async () => {
+    const engine = new ExecutionEngine({ autoStart: true });
+
+    const sourceObj = { nested: { count: 10 } };
+    const result = await engine.execute<
+      { nested: { count: number } },
+      { nested: { count: number } }
+    >(sourceObj, async (input) => {
+      return input;
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.throws(() => {
+      (result.value as { nested: { count: number } }).nested.count = 999;
+    });
+
+    await engine.stop();
+  });
+
+  await t.test(
+    '12. 1,000 Concurrent Executions: High-concurrency isolation and accurate diagnostics',
+    async () => {
+      const engine = new ExecutionEngine({ autoStart: true });
+
+      const promises: Promise<void>[] = [];
+      for (let i = 0; i < 1000; i++) {
+        promises.push(
+          engine
+            .execute<number, number>(i, async (val) => val * 2)
+            .then((res) => {
+              assert.strictEqual(res.success, true);
+              assert.strictEqual(res.value, i * 2);
+            }),
+        );
       }
 
-      class AuditMiddleware implements Middleware {
-        public async handle(
-          context: ExecutionContext,
-          next: () => Promise<unknown>,
-        ): Promise<unknown> {
-          const res = (await next()) as Record<string, unknown>;
-          return { ...res, audited: true, requestId: context.requestContext.id };
-        }
-      }
+      await Promise.all(promises);
 
-      class EnvelopeInterceptor implements Interceptor {
-        public async intercept(
-          _context: ExecutionContext,
-          next: () => Promise<unknown>,
-        ): Promise<unknown> {
-          const data = await next();
-          return { success: true, data };
-        }
-      }
+      const diag = engine.getDiagnostics();
+      assert.strictEqual(diag.totalExecutions, 1000);
+      assert.strictEqual(diag.completedExecutions, 1000);
+      assert.strictEqual(diag.handlerExecutions, 1000);
+      assert.strictEqual(diag.activeExecutions, 0);
 
-      // 2. Decorated Controller
-      @Controller('/orders')
-      class OrderController {
-        @Get('/:orderId')
-        public findOrder(
-          @Param('orderId') orderId: string,
-          @Query('includeItems', { required: false }) includeItems: boolean,
-          @Header('x-api-key') apiKey: string,
-        ) {
-          return {
-            orderId,
-            includeItems: Boolean(includeItems),
-            apiKey,
-            status: 'CONFIRMED',
-          };
-        }
+      await engine.stop();
+    },
+  );
 
-        @Post('/create')
-        public createOrder(@Body('item') item: string) {
-          return { item, created: true };
-        }
-      }
-      void OrderController;
+  await t.test(
+    '13. Diagnostics Tracking & Security: Zero payloads, credentials, or execution IDs retained',
+    async () => {
+      const engine = new ExecutionEngine({ autoStart: true });
 
-      @Module({
-        controllers: [OrderController],
+      const result = await engine.execute<
+        { secretKey: string },
+        { secretKey: string; processed: boolean }
+      >({ secretKey: 'top_secret_val' }, async (input) => {
+        return { ...input, processed: true };
+      });
+
+      const diag = engine.getDiagnostics();
+      const serialized = JSON.stringify(diag);
+
+      assert.strictEqual(serialized.includes('top_secret_val'), false);
+      assert.strictEqual(serialized.includes(result.executionId), false);
+      assert.strictEqual(serialized.includes('secretKey'), false);
+
+      await engine.stop();
+    },
+  );
+
+  await t.test('14. ExecutionEngineBuilder Fluent API', async () => {
+    const contextManager = new ExecutionContextManager();
+    let mwExecuted = false;
+
+    const engine = new ExecutionEngineBuilder()
+      .withContextManager(contextManager)
+      .withMiddleware<string, string>({
+        async execute(_input, _context, next) {
+          mwExecuted = true;
+          return next();
+        },
       })
-      class OrderModule {}
-      void OrderModule;
+      .withAutoStart(true)
+      .build();
 
-      // 3. Authoritative MetadataRegistry
-      const metadataBuilder = new MetadataBuilder();
-      const metadataRegistry = new MetadataRegistry(metadataBuilder.build());
+    assert.strictEqual(engine.ready, true);
 
-      // 4. Finalize collected decorator metadata into authoritative MetadataRegistry
-      MetadataRegistrar.finalize(MetadataRegistrar.getCollector(), metadataRegistry);
+    const result = await engine.execute<string, string>(
+      'builder_test',
+      async (input) => `ok_${input}`,
+    );
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.value, 'ok_builder_test');
+    assert.strictEqual(mwExecuted, true);
 
-      // 5. Discovery Engine
-      const discoveryBuilder = new DiscoveryBuilder().setMetadataRegistry(metadataRegistry);
-      const discoveryEngine = new DiscoveryEngine(discoveryBuilder.build());
-      const discoveryResult = await discoveryEngine.discover();
+    await engine.stop();
+    await contextManager.stop();
+  });
 
-      // 6. Module Compiler
-      const compilerBuilder = new CompilerBuilder();
-      const compiler = new ModuleCompiler(compilerBuilder.build());
-      const compilationResult = await compiler.compile(discoveryResult);
+  await t.test(
+    '15. Critical Architectural Boundary: Zero higher-layer or forbidden framework dependencies',
+    async () => {
+      const pkgJsonPath = path.resolve(__dirname, '../../package.json');
+      const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
-      assert.ok(compilationResult);
+      const deps = Object.keys(pkgJson.dependencies || {});
+      const forbidden = [
+        '@coreforge/transport',
+        '@coreforge/routing',
+        '@coreforge/response',
+        '@coreforge/runtime',
+        '@coreforge/jobs',
+        '@coreforge/events',
+        '@coreforge/cache',
+        '@coreforge/locks',
+        '@coreforge/rate-limit',
+        '@coreforge/resilience',
+        '@coreforge/metrics',
+        '@coreforge/tracing',
+        '@coreforge/logging',
+        '@coreforge/config',
+      ];
 
-      // 7. Parameter Binding Compiler
-      const compiledBindings = ParameterBindingCompiler.compileFromRegistry(metadataRegistry);
-
-      const findOrderKey = 'OrderController:findOrder:GET:/orderId';
-      const orderBindings =
-        compiledBindings.get(findOrderKey) || Array.from(compiledBindings.values())[0];
-
-      assert.ok(orderBindings);
-
-      // 8. DI Container & Request Context Manager
-      const container = new ContainerBuilder()
-        .register({ token: OrderController, useClass: OrderController, scope: 'REQUEST' })
-        .register({ token: ApiKeyGuard, useClass: ApiKeyGuard, scope: 'REQUEST' })
-        .register({ token: AuditMiddleware, useClass: AuditMiddleware, scope: 'REQUEST' })
-        .register({ token: EnvelopeInterceptor, useClass: EnvelopeInterceptor, scope: 'REQUEST' })
-        .build();
-      container.makeReady();
-
-      const contextManager = new RequestContextManager(container);
-      const reqContext = await contextManager.createContext({ id: 'req-order-101' });
-
-      // 9. Assembled ActionDescriptor
-      const actionDescriptor: ActionDescriptor = {
-        id: findOrderKey,
-        controllerToken: OrderController,
-        methodName: 'findOrder',
-        parameterBindings: orderBindings,
-        guards: [ApiKeyGuard],
-        middleware: [AuditMiddleware],
-        interceptors: [EnvelopeInterceptor],
-      };
-
-      // 10. Execution Engine execution
-      const engine = new ExecutionEngine();
-
-      const incomingRequest: NormalizedRequest = {
-        params: { orderId: 'ord-8888' },
-        query: { includeItems: true },
-        headers: { 'x-api-key': 'valid-secret-key' },
-      };
-
-      const finalResult = (await engine.execute(actionDescriptor, incomingRequest, reqContext)) as {
-        success: boolean;
-        data: {
-          orderId: string;
-          includeItems: boolean;
-          apiKey: string;
-          status: string;
-        };
-        audited: boolean;
-        requestId: string;
-      };
-
-      assert.strictEqual(finalResult.audited, true);
-      assert.strictEqual(finalResult.requestId, 'req-order-101');
-      assert.strictEqual(finalResult.success, true);
-      assert.strictEqual(finalResult.data.orderId, 'ord-8888');
-      assert.strictEqual(finalResult.data.includeItems, true);
-      assert.strictEqual(finalResult.data.apiKey, 'valid-secret-key');
-      assert.strictEqual(finalResult.data.status, 'CONFIRMED');
-
-      await reqContext.dispose();
+      for (const f of forbidden) {
+        assert.strictEqual(
+          deps.includes(f),
+          false,
+          `Forbidden dependency detected in @coreforge/execution: ${f}`,
+        );
+      }
     },
   );
 });

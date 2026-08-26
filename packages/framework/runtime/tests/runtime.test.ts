@@ -16,7 +16,7 @@ import {
 import { ContainerBuilder } from '@coreforge/di';
 import { DiscoveryBuilder, DiscoveryEngine } from '@coreforge/discovery';
 import { ExceptionPipeline } from '@coreforge/exceptions';
-import { ActionDescriptor, ExecutionEngine } from '@coreforge/execution';
+import { ActionDescriptor, ActionExecutionEngine as ExecutionEngine } from '@coreforge/execution';
 import { MetadataBuilder, MetadataRegistry } from '@coreforge/metadata';
 import { ParameterBindingCompiler } from '@coreforge/parameter-binding';
 import { RequestContextManager } from '@coreforge/request-context';

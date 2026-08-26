@@ -1,72 +1,96 @@
-import { ExecutionDiagnosticsSnapshot } from '../types/executionTypes';
+import { ExecutionEngineDiagnosticsSnapshot } from '@coreforge/contracts';
 
 export class ExecutionDiagnostics {
   private _totalExecutions = 0;
-  private _successfulExecutions = 0;
+  private _completedExecutions = 0;
   private _failedExecutions = 0;
-  private _guardRejections = 0;
+  private _cancelledExecutions = 0;
+  private _shortCircuitedExecutions = 0;
+  private _middlewareExecutions = 0;
   private _middlewareFailures = 0;
-  private _interceptorFailures = 0;
-  private _actionFailures = 0;
+  private _handlerExecutions = 0;
+  private _activeExecutions = 0;
   private _totalDurationMs = 0;
   private _slowestDurationMs = 0;
 
-  public recordSuccess(durationMs: number): void {
+  public recordExecutionStarted(): void {
     this._totalExecutions++;
-    this._successfulExecutions++;
-    this._totalDurationMs += durationMs;
-    if (durationMs > this._slowestDurationMs) {
-      this._slowestDurationMs = durationMs;
-    }
+    this._activeExecutions++;
   }
 
-  public recordFailure(
-    durationMs: number,
-    flags: {
-      isGuardRejection?: boolean;
-      isMiddlewareFailure?: boolean;
-      isInterceptorFailure?: boolean;
-      isActionFailure?: boolean;
-    } = {},
-  ): void {
-    this._totalExecutions++;
+  public recordExecutionCompleted(durationMs: number): void {
+    this._completedExecutions++;
+    this._activeExecutions = Math.max(0, this._activeExecutions - 1);
+    this._recordDuration(durationMs);
+  }
+
+  public recordExecutionFailed(durationMs: number): void {
     this._failedExecutions++;
+    this._activeExecutions = Math.max(0, this._activeExecutions - 1);
+    this._recordDuration(durationMs);
+  }
+
+  public recordExecutionCancelled(durationMs: number): void {
+    this._cancelledExecutions++;
+    this._activeExecutions = Math.max(0, this._activeExecutions - 1);
+    this._recordDuration(durationMs);
+  }
+
+  public recordShortCircuit(): void {
+    this._shortCircuitedExecutions++;
+  }
+
+  public recordMiddlewareExecuted(): void {
+    this._middlewareExecutions++;
+  }
+
+  public recordMiddlewareFailed(): void {
+    this._middlewareFailures++;
+  }
+
+  public recordHandlerExecuted(): void {
+    this._handlerExecutions++;
+  }
+
+  private _recordDuration(durationMs: number): void {
     this._totalDurationMs += durationMs;
     if (durationMs > this._slowestDurationMs) {
       this._slowestDurationMs = durationMs;
     }
-
-    if (flags.isGuardRejection) {
-      this._guardRejections++;
-    }
-    if (flags.isMiddlewareFailure) {
-      this._middlewareFailures++;
-    }
-    if (flags.isInterceptorFailure) {
-      this._interceptorFailures++;
-    }
-    if (flags.isActionFailure) {
-      this._actionFailures++;
-    }
   }
 
-  public snapshot(): ExecutionDiagnosticsSnapshot {
-    const avg = this._totalExecutions > 0 ? this._totalDurationMs / this._totalExecutions : 0;
+  public getSnapshot(): ExecutionEngineDiagnosticsSnapshot {
+    const finishedCount =
+      this._completedExecutions + this._failedExecutions + this._cancelledExecutions;
+    const averageDurationMs =
+      finishedCount > 0 ? Math.round((this._totalDurationMs / finishedCount) * 100) / 100 : 0;
 
-    const snap: ExecutionDiagnosticsSnapshot = {
+    return Object.freeze({
       totalExecutions: this._totalExecutions,
-      successfulExecutions: this._successfulExecutions,
+      completedExecutions: this._completedExecutions,
       failedExecutions: this._failedExecutions,
-      guardRejections: this._guardRejections,
+      cancelledExecutions: this._cancelledExecutions,
+      shortCircuitedExecutions: this._shortCircuitedExecutions,
+      middlewareExecutions: this._middlewareExecutions,
       middlewareFailures: this._middlewareFailures,
-      interceptorFailures: this._interceptorFailures,
-      actionFailures: this._actionFailures,
-      totalDurationMs: Number(this._totalDurationMs.toFixed(4)),
-      averageDurationMs: Number(avg.toFixed(4)),
-      slowestDurationMs: Number(this._slowestDurationMs.toFixed(4)),
-      timestamp: Date.now(),
-    };
+      handlerExecutions: this._handlerExecutions,
+      averageDurationMs,
+      slowestDurationMs: Math.round(this._slowestDurationMs * 100) / 100,
+      activeExecutions: this._activeExecutions,
+    });
+  }
 
-    return Object.freeze(snap);
+  public reset(): void {
+    this._totalExecutions = 0;
+    this._completedExecutions = 0;
+    this._failedExecutions = 0;
+    this._cancelledExecutions = 0;
+    this._shortCircuitedExecutions = 0;
+    this._middlewareExecutions = 0;
+    this._middlewareFailures = 0;
+    this._handlerExecutions = 0;
+    this._activeExecutions = 0;
+    this._totalDurationMs = 0;
+    this._slowestDurationMs = 0;
   }
 }

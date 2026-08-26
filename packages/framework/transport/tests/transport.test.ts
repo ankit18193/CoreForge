@@ -8,7 +8,12 @@ import { Controller, Get, MetadataRegistrar, Module, Param, Query } from '@coref
 import { ContainerBuilder } from '@coreforge/di';
 import { DiscoveryBuilder, DiscoveryEngine } from '@coreforge/discovery';
 import { ExceptionPipeline } from '@coreforge/exceptions';
-import { ActionDescriptor, ExecutionEngine, Guard, GuardRejectedError } from '@coreforge/execution';
+import {
+  ActionDescriptor,
+  ActionExecutionEngine as ExecutionEngine,
+  Guard,
+  GuardRejectedError,
+} from '@coreforge/execution';
 import { MetadataBuilder, MetadataRegistry } from '@coreforge/metadata';
 import { NormalizedRequest, ParameterBindingCompiler } from '@coreforge/parameter-binding';
 import { RequestContext, RequestContextManager } from '@coreforge/request-context';
