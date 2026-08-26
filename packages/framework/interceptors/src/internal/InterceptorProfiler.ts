@@ -1,31 +1,16 @@
 export class InterceptorProfiler {
-  private _beforeTime = 0;
-  private _invokeTime = 0;
-  private _afterTime = 0;
-  private _totalTime = 0;
+  private _startTime: bigint = 0n;
 
-  public recordBefore(duration: number): void {
-    this._beforeTime = duration;
+  public start(): this {
+    this._startTime = process.hrtime.bigint();
+    return this;
   }
 
-  public recordInvocation(duration: number): void {
-    this._invokeTime = duration;
-  }
-
-  public recordAfter(duration: number): void {
-    this._afterTime = duration;
-  }
-
-  public recordTotal(duration: number): void {
-    this._totalTime = duration;
-  }
-
-  public get timings() {
-    return {
-      beforeDuration: this._beforeTime,
-      invocationDuration: this._invokeTime,
-      afterDuration: this._afterTime,
-      totalTime: this._totalTime,
-    };
+  public get elapsedMs(): number {
+    if (this._startTime === 0n) {
+      return 0;
+    }
+    const diff = process.hrtime.bigint() - this._startTime;
+    return Number(diff) / 1_000_000;
   }
 }

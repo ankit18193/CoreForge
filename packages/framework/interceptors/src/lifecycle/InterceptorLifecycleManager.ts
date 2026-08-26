@@ -1,28 +1,75 @@
-import { InterceptorState } from './InterceptorState';
-import { InterceptorLifecycleError } from '../errors/InterceptorErrors';
+import { InterceptorStateError } from '../errors/InterceptorErrors';
+import { InterceptorState } from '../types/interceptorTypes';
 
 export class InterceptorLifecycleManager {
-  private _state = InterceptorState.CREATED;
+  private _state: InterceptorState;
+
+  constructor(initialState: InterceptorState = 'CREATED') {
+    this._state = initialState;
+  }
 
   public get state(): InterceptorState {
     return this._state;
   }
 
-  public transitionTo(target: InterceptorState): void {
-    const allowed: Record<InterceptorState, InterceptorState[]> = {
-      [InterceptorState.CREATED]: [InterceptorState.INITIALIZED, InterceptorState.FAILED],
-      [InterceptorState.INITIALIZED]: [InterceptorState.READY, InterceptorState.FAILED],
-      [InterceptorState.READY]: [InterceptorState.STOPPED, InterceptorState.FAILED],
-      [InterceptorState.STOPPED]: [InterceptorState.READY, InterceptorState.FAILED],
-      [InterceptorState.FAILED]: [],
-    };
+  public get isReady(): boolean {
+    return this._state === 'READY';
+  }
 
-    const next = allowed[this._state];
-    if (!next.includes(target)) {
-      throw new InterceptorLifecycleError(
-        `InterceptorLifecycleManager: invalid transition from ${this._state} to ${target}.`,
+  public get isStopped(): boolean {
+    return this._state === 'STOPPED';
+  }
+
+  public start(): void {
+    if (this._state === 'READY') {
+      return; // Idempotent
+    }
+
+    if (this._state === 'STOPPING' || this._state === 'STOPPED') {
+      throw new InterceptorStateError(`Cannot start interceptor engine from ${this._state} state`);
+    }
+
+    this._state = 'READY';
+  }
+
+  public transitionToStopping(): void {
+    if (this._state === 'STOPPED') {
+      return;
+    }
+    this._state = 'STOPPING';
+  }
+
+  public transitionToStopped(): void {
+    this._state = 'STOPPED';
+  }
+
+  public stop(): void {
+    if (this._state === 'STOPPED') {
+      return; // Idempotent
+    }
+    this._state = 'STOPPING';
+    this._state = 'STOPPED';
+  }
+
+  public ensureReadyForExecution(): void {
+    if (this._state === 'STOPPING' || this._state === 'STOPPED') {
+      throw new InterceptorStateError(
+        `Cannot execute interceptor operation in ${this._state} state`,
       );
     }
-    this._state = target;
+
+    if (this._state !== 'READY') {
+      throw new InterceptorStateError(
+        `Cannot execute interceptor operation before engine is READY (current: ${this._state})`,
+      );
+    }
+  }
+
+  public ensureCanRegister(): void {
+    if (this._state !== 'CREATED') {
+      throw new InterceptorStateError(
+        `Cannot register interceptor when engine is in ${this._state} state`,
+      );
+    }
   }
 }

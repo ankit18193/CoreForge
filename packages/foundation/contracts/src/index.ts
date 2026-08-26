@@ -1508,4 +1508,3 @@ export interface InterceptorDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activeExecutions: number;
 }
-

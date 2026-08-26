@@ -1,7 +1,3 @@
-export enum InterceptorState {
-  CREATED = 'CREATED',
-  INITIALIZED = 'INITIALIZED',
-  READY = 'READY',
-  STOPPED = 'STOPPED',
-  FAILED = 'FAILED',
-}
+import { InterceptorState } from '../types/interceptorTypes';
+
+export type { InterceptorState };

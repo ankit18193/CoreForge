@@ -1,7 +1,4 @@
-import {
-  InterceptorError,
-  InterceptorRegistrationError,
-} from '../errors/InterceptorErrors';
+import { InterceptorError, InterceptorRegistrationError } from '../errors/InterceptorErrors';
 import { Interceptor, InterceptorOptions } from '../types/interceptorTypes';
 
 interface RegisteredInterceptorEntry {
@@ -20,9 +17,7 @@ export class InterceptorRegistry {
     options?: InterceptorOptions,
   ): void {
     if (this._locked) {
-      throw new InterceptorRegistrationError(
-        'Cannot register interceptor after engine is READY',
-      );
+      throw new InterceptorRegistrationError('Cannot register interceptor after engine is READY');
     }
 
     if (!interceptor || typeof interceptor !== 'object') {
