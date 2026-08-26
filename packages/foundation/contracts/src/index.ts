@@ -235,11 +235,11 @@ export interface InterceptorContext {
   readonly invocationContext?: unknown | undefined;
 }
 
-export interface Interceptor {
+export interface ControllerInterceptor {
   intercept(context: InterceptorContext, next: NextInvocation): Promise<InterceptionResult>;
 }
 
-export interface InterceptorManager {
+export interface ControllerInterceptorManager {
   execute(context: InterceptorContext, next: NextInvocation): Promise<InterceptionResult>;
 }
 
@@ -1455,3 +1455,57 @@ export interface ExecutionEngineDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activeExecutions: number;
 }
+
+// Application Middleware & Interceptor Contracts
+export interface Interceptor<TInput = unknown, TResult = unknown> {
+  intercept(
+    input: TInput,
+    context: ExecutionContext,
+    next: () => Promise<TResult>,
+  ): Promise<TResult> | TResult;
+}
+
+export interface InterceptorOptions {
+  readonly priority?: number | undefined;
+}
+
+export interface InterceptorResult<TResult = unknown> {
+  readonly value: TResult;
+  readonly intercepted: boolean;
+  readonly executionId: string;
+  readonly durationMs: number;
+}
+
+export interface InterceptorEngine {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  use<TInput = unknown, TResult = unknown>(
+    interceptor: Interceptor<TInput, TResult>,
+    options?: InterceptorOptions,
+  ): void;
+
+  execute<TInput = unknown, TResult = unknown>(
+    input: TInput,
+    handler: (input: TInput, context: ExecutionContext) => Promise<TResult> | TResult,
+    options?: {
+      readonly context?: ExecutionContext | undefined;
+    },
+  ): Promise<InterceptorResult<TResult>>;
+
+  readonly ready: boolean;
+}
+
+export interface InterceptorDiagnosticsSnapshot {
+  readonly totalExecutions: number;
+  readonly completedExecutions: number;
+  readonly failedExecutions: number;
+  readonly shortCircuitedExecutions: number;
+  readonly interceptorExecutions: number;
+  readonly interceptorFailures: number;
+  readonly handlerExecutions: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activeExecutions: number;
+}
+

@@ -3,18 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "description": "Interceptor Pipeline for CoreForge",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean"
   },
   "dependencies": {
-    "@coreforge/types": "*",
-    "@coreforge/contracts": "*",
-    "@coreforge/errors": "*",
-    "@coreforge/container": "*",
-    "@coreforge/logging": "*",
-    "@coreforge/events": "*"
+    "@coreforge/contracts": "0.1.0",
+    "@coreforge/errors": "0.1.0",
+    "@coreforge/execution-context": "0.1.0",
+    "@coreforge/types": "0.1.0",
+    "@coreforge/utils": "0.1.0"
   }
 }
