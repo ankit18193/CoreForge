@@ -79,7 +79,7 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
       const manager = new RateLimiterManager();
       const policy: RateLimitPolicy = {
         limit: 3,
-        windowMs: 40,
+        windowMs: 80,
         algorithm: 'FIXED_WINDOW',
       };
       const limiter = manager.limiter(policy);
@@ -100,7 +100,7 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
       assert.ok((d4.retryAfterMs ?? 0) > 0);
 
       // Wait for window to roll over
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 95));
 
       const d5 = await limiter.consume('user:fw');
       assert.strictEqual(d5.allowed, true);
