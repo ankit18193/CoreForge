@@ -802,7 +802,7 @@ export interface EventHandlerContext {
   readonly signal?: AbortSignal | undefined;
 }
 
-export type EventHandler<TEvent extends DomainEvent = DomainEvent> = (
+export type DomainEventHandler<TEvent extends DomainEvent = DomainEvent> = (
   event: TEvent,
   context: EventHandlerContext,
 ) => void | Promise<void>;
@@ -818,7 +818,7 @@ export interface EventRetryPolicy {
   readonly delayMs?: number | undefined;
 }
 
-export interface EventHandlerOptions {
+export interface DomainEventHandlerOptions {
   readonly priority?: number | undefined;
   readonly retry?: EventRetryPolicy | undefined;
 }
@@ -854,8 +854,8 @@ export interface EventBus {
   ): Promise<EventDispatchResult>;
   subscribe<T extends DomainEvent>(
     eventType: string,
-    handler: EventHandler<T>,
-    options?: EventHandlerOptions,
+    handler: DomainEventHandler<T>,
+    options?: DomainEventHandlerOptions,
   ): EventSubscription;
 }
 
@@ -1669,4 +1669,80 @@ export interface ApplicationDiagnosticsSnapshot {
   readonly averageDurationMs: number;
   readonly slowestDurationMs: number;
   readonly activeExecutions: number;
+}
+
+// Application Event & Handler Dispatch Contracts
+export type EventExecutionMode = 'SEQUENTIAL' | 'CONCURRENT';
+export type EventFailureStrategy = 'CONTINUE' | 'STOP';
+
+export interface Event<TPayload = unknown> {
+  readonly type: string;
+  readonly payload: TPayload;
+}
+
+export interface EventHandler<TPayload = unknown> {
+  handle(event: Event<TPayload>, context: ExecutionContext): Promise<void> | void;
+}
+
+export interface EventHandlerOptions {
+  readonly priority?: number | undefined;
+}
+
+export interface EventPublishOptions {
+  readonly context?: ExecutionContext | undefined;
+  readonly mode?: EventExecutionMode | undefined;
+  readonly failureStrategy?: EventFailureStrategy | undefined;
+}
+
+export interface EventHandlerResult {
+  readonly handlerName?: string | undefined;
+  readonly success: boolean;
+  readonly error?: unknown | undefined;
+  readonly durationMs: number;
+}
+
+export interface EventPublishResult {
+  readonly success: boolean;
+  readonly eventType: string;
+  readonly executionId: string;
+  readonly durationMs: number;
+  readonly handlerCount: number;
+  readonly successfulHandlers: number;
+  readonly failedHandlers: number;
+  readonly handlerResults: readonly EventHandlerResult[];
+  readonly state: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+}
+
+export interface EventPublisher {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  register<TPayload = unknown>(
+    type: string,
+    handler: EventHandler<TPayload>,
+    options?: EventHandlerOptions,
+  ): void;
+
+  publish<TPayload = unknown>(
+    event: Event<TPayload>,
+    options?: EventPublishOptions,
+  ): Promise<EventPublishResult>;
+
+  readonly ready: boolean;
+}
+
+export interface ApplicationEventDiagnosticsSnapshot {
+  readonly totalPublications: number;
+  readonly successfulPublications: number;
+  readonly failedPublications: number;
+  readonly cancelledPublications: number;
+  readonly totalHandlersExecuted: number;
+  readonly successfulHandlers: number;
+  readonly failedHandlers: number;
+  readonly handlerNotFound: number;
+  readonly registrationFailures: number;
+  readonly nestedPublications: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activePublications: number;
 }

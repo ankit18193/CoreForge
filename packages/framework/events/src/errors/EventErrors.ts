@@ -18,59 +18,56 @@ export class EventStateError extends EventError {
   }
 }
 
-export class EventRegistrationError extends EventError {
+export class EventValidationError extends EventError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-EVENT-REGISTRATION', details);
+    super(message, 'CF-EVENT-VALIDATION', details);
   }
 }
 
-export class EventSubscriptionError extends EventError {
+export class EventTypeError extends EventError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-EVENT-SUBSCRIPTION', details);
+    super(message, 'CF-EVENT-TYPE', details);
   }
 }
 
-export class EventDispatchError extends EventError {
+export class EventHandlerRegistrationError extends EventError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-EVENT-DISPATCH', details);
+    super(message, 'CF-EVENT-HANDLER-REGISTRATION', details);
   }
 }
 
-export class EventHandlerError extends EventError {
-  public readonly handlerId: string;
-
-  constructor(handlerId: string, message: string, cause?: unknown) {
-    super(`Event handler '${handlerId}' failed: ${message}`, 'CF-EVENT-HANDLER', {
-      handlerId,
-      cause: cause instanceof Error ? cause.message : cause,
-    });
-    this.handlerId = handlerId;
-  }
-}
-
-export class EventCancelledError extends EventError {
-  constructor(message = 'Event dispatch was cancelled by AbortSignal.', details?: unknown) {
-    super(message, 'CF-EVENT-CANCELLED', details);
-  }
-}
-
-export class EventRetryExhaustedError extends EventError {
-  public readonly handlerId: string;
-  public readonly attempts: number;
-
-  constructor(handlerId: string, attempts: number, cause?: unknown) {
-    super(
-      `Event handler '${handlerId}' exhausted all ${attempts} retry attempts.`,
-      'CF-EVENT-RETRY-EXHAUSTED',
-      { handlerId, attempts, cause: cause instanceof Error ? cause.message : cause },
-    );
-    this.handlerId = handlerId;
-    this.attempts = attempts;
-  }
-}
-
-export class EventPayloadError extends EventError {
+export class EventHandlerNotFoundError extends EventError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-EVENT-PAYLOAD', details);
+    super(message, 'CF-EVENT-HANDLER-NOT-FOUND', details);
+  }
+}
+
+export class EventExecutionError extends EventError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CF-EVENT-EXECUTION', details);
+  }
+}
+
+export class EventCancellationError extends EventError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CF-EVENT-CANCELLATION', details);
+  }
+}
+
+export class EventSnapshotError extends EventError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CF-EVENT-SNAPSHOT', details);
+  }
+}
+
+export class EventConcurrencyError extends EventError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CF-EVENT-CONCURRENCY', details);
+  }
+}
+
+export class EventLifecycleError extends EventError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CF-EVENT-LIFECYCLE', details);
   }
 }

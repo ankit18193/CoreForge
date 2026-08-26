@@ -1,52 +1,48 @@
 import {
-  DomainEvent,
-  EventBus as IEventBus,
-  EventDiagnosticsSnapshot,
-  EventDispatchMode,
-  EventDispatchOptions,
-  EventDispatchResult,
-  EventFailureDescriptor,
+  ApplicationEventDiagnosticsSnapshot as EventDiagnosticsSnapshot,
+  Event,
+  EventExecutionMode,
+  EventFailureStrategy,
   EventHandler,
-  EventHandlerContext,
   EventHandlerOptions,
-  EventRetryPolicy,
+  EventHandlerResult,
+  EventPublisher as IEventPublisher,
+  EventPublishOptions,
+  EventPublishResult,
+  ExecutionContext,
 } from '@coreforge/contracts';
+import { ExecutionEngine } from '@coreforge/execution';
+import { ExecutionContextManager } from '@coreforge/execution-context';
+import { InterceptorEngine } from '@coreforge/interceptors';
 
 export type {
-  DomainEvent,
-  IEventBus,
+  Event,
   EventDiagnosticsSnapshot,
-  EventDispatchMode,
-  EventDispatchOptions,
-  EventDispatchResult,
-  EventFailureDescriptor,
+  EventExecutionMode,
+  EventFailureStrategy,
   EventHandler,
-  EventHandlerContext,
   EventHandlerOptions,
-  EventRetryPolicy,
+  EventHandlerResult,
+  EventPublishOptions,
+  EventPublishResult,
+  ExecutionContext,
+  IEventPublisher,
 };
 
 export type EventState = 'CREATED' | 'READY' | 'STOPPING' | 'STOPPED';
 
-export interface EventBusOptions {
-  readonly defaultDispatchMode?: EventDispatchMode | undefined;
+export interface EventPublisherOptions {
+  readonly contextManager?: ExecutionContextManager | undefined;
+  readonly executionEngine?: ExecutionEngine | undefined;
+  readonly interceptorEngine?: InterceptorEngine | undefined;
   readonly autoStart?: boolean | undefined;
-  readonly enableDiagnostics?: boolean | undefined;
+  readonly defaultMode?: EventExecutionMode | undefined;
+  readonly defaultFailureStrategy?: EventFailureStrategy | undefined;
 }
 
-export interface EventHandlerRegistration<T extends DomainEvent = DomainEvent> {
-  readonly id: string;
-  readonly eventType: string;
-  readonly handler: EventHandler<T>;
+export interface RegisteredEventHandlerEntry<TPayload = unknown> {
+  readonly handler: EventHandler<TPayload>;
   readonly priority: number;
-  readonly registrationIndex: number;
-  readonly retry?: EventRetryPolicy | undefined;
-}
-
-export interface EventHandlerExecutionResult {
-  readonly handlerId: string;
-  readonly success: boolean;
-  readonly error?: EventFailureDescriptor | undefined;
-  readonly attempts: number;
-  readonly durationMs: number;
+  readonly sequence: number;
+  readonly handlerName: string;
 }

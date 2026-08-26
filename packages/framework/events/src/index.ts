@@ -5,36 +5,16 @@ export * from './types/eventTypes';
 export * from './errors/EventErrors';
 
 // Event
-export * from './event/DomainEvent';
-export * from './event/EventFactory';
-export * from './event/EventPayloadSnapshot';
+export * from './event/EventValidator';
+export * from './event/EventSnapshot';
 
-// Handlers
-export * from './handler/EventHandler';
-export * from './handler/EventHandlerRegistry';
-export * from './handler/EventHandlerResolver';
+// Registry
+export * from './registry/EventHandlerRegistry';
+export * from './registry/EventHandlerResolver';
 
-// Subscriptions
-export * from './subscription/EventSubscription';
-export * from './subscription/SubscriptionRegistry';
+// Result
+export * from './result/EventResultFactory';
 
-// Retry
-export * from './retry/RetryPolicy';
-export * from './retry/EventRetryExecutor';
-
-// Dispatch
-export * from './dispatch/EventDispatcher';
-export * from './dispatch/SequentialDispatcher';
-export * from './dispatch/ParallelDispatcher';
-
-// Lifecycle
-export * from './lifecycle/EventState';
-export * from './lifecycle/EventLifecycleManager';
-
-// Diagnostics
-export * from './diagnostics/EventDiagnostics';
-
-// Bus
-export * from './bus/EventDispatchResult';
-export * from './bus/EventBus';
-export * from './bus/EventBusBuilder';
+// Forward compatible stub for Stage 1
+export class EventPublisher {}
+export { EventPublisher as EventBus };

@@ -10,6 +10,9 @@
     { "path": "../../foundation/types" },
     { "path": "../../foundation/contracts" },
     { "path": "../../foundation/errors" },
-    { "path": "../../foundation/utils" }
+    { "path": "../../foundation/utils" },
+    { "path": "../execution-context" },
+    { "path": "../execution" },
+    { "path": "../interceptors" }
   ]
 }
