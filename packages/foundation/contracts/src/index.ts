@@ -1618,3 +1618,55 @@ export interface QueryDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activeQueries: number;
 }
+
+// Application Service & Use-Case Orchestration Contracts
+export interface ApplicationService<TInput = unknown, TResult = unknown> {
+  execute(input: TInput, context: ExecutionContext): Promise<TResult> | TResult;
+}
+
+export interface ApplicationServiceOptions {
+  readonly context?: ExecutionContext | undefined;
+}
+
+export interface ApplicationResult<TResult = unknown> {
+  readonly success: boolean;
+  readonly value?: TResult | undefined;
+  readonly error?: unknown;
+  readonly serviceType: string;
+  readonly executionId: string;
+  readonly durationMs: number;
+  readonly state: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+}
+
+export interface ApplicationManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  register<TInput = unknown, TResult = unknown>(
+    type: string,
+    service: ApplicationService<TInput, TResult>,
+  ): void;
+
+  execute<TInput = unknown, TResult = unknown>(
+    type: string,
+    input: TInput,
+    options?: ApplicationServiceOptions,
+  ): Promise<ApplicationResult<TResult>>;
+
+  readonly ready: boolean;
+}
+
+export interface ApplicationDiagnosticsSnapshot {
+  readonly totalExecutions: number;
+  readonly completedExecutions: number;
+  readonly failedExecutions: number;
+  readonly cancelledExecutions: number;
+  readonly serviceNotFound: number;
+  readonly registrationFailures: number;
+  readonly serviceExecutions: number;
+  readonly serviceFailures: number;
+  readonly nestedOperations: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activeExecutions: number;
+}
