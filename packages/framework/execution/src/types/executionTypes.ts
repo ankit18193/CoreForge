@@ -1,55 +1,27 @@
 import {
-  ActionDescriptor,
-  ActionExecutionContext,
-  ExecutionActionInvoker,
-  ExecutionEngine,
+  ExecutionContext,
+  ExecutionEngine as IExecutionEngine,
+  ExecutionEngineDiagnosticsSnapshot,
+  ExecutionHandler,
+  ExecutionMiddleware,
+  ExecutionOptions,
   ExecutionResult,
-  InjectionToken,
-  ParameterBindingDescriptor,
-  RequestContext,
 } from '@coreforge/contracts';
-
-export type ActionInvoker = ExecutionActionInvoker;
-export type ExecutionContext = ActionExecutionContext;
+import { ExecutionContextManager } from '@coreforge/execution-context';
 
 export type {
-  ActionDescriptor,
-  ActionExecutionContext,
-  ExecutionEngine,
+  ExecutionContext,
+  IExecutionEngine,
+  ExecutionEngineDiagnosticsSnapshot,
+  ExecutionHandler,
+  ExecutionMiddleware,
+  ExecutionOptions,
   ExecutionResult,
-  InjectionToken,
-  ParameterBindingDescriptor,
-  RequestContext,
 };
 
-export interface Guard {
-  canActivate(context: ExecutionContext): boolean | Promise<boolean>;
-}
+export type ExecutionEngineState = 'CREATED' | 'READY' | 'STOPPING' | 'STOPPED';
 
-export interface Middleware {
-  handle(context: ExecutionContext, next: () => Promise<unknown>): Promise<unknown>;
-}
-
-export interface Interceptor {
-  intercept(context: ExecutionContext, next: () => Promise<unknown>): Promise<unknown>;
-}
-
-export interface ActionInvocation {
-  readonly action: ActionDescriptor;
-  readonly controller: unknown;
-  readonly arguments: readonly unknown[];
-}
-
-export interface ExecutionDiagnosticsSnapshot {
-  readonly totalExecutions: number;
-  readonly successfulExecutions: number;
-  readonly failedExecutions: number;
-  readonly guardRejections: number;
-  readonly middlewareFailures: number;
-  readonly interceptorFailures: number;
-  readonly actionFailures: number;
-  readonly totalDurationMs: number;
-  readonly averageDurationMs: number;
-  readonly slowestDurationMs: number;
-  readonly timestamp: number;
+export interface ExecutionEngineOptions {
+  readonly contextManager?: ExecutionContextManager | undefined;
+  readonly autoStart?: boolean | undefined;
 }

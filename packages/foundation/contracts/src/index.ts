@@ -494,7 +494,7 @@ export interface ParameterBindingResolver {
 }
 
 // Action Execution Contracts
-export type ExecutionResult<T = unknown> = T;
+export type ActionExecutionResult<T = unknown> = T;
 
 export interface ActionDescriptor {
   readonly id: string;
@@ -518,7 +518,7 @@ export interface ExecutionActionInvoker {
   invoke(context: ActionExecutionContext, arguments_: readonly unknown[]): Promise<unknown>;
 }
 
-export interface ExecutionEngine {
+export interface ActionExecutionEngine {
   execute(action: ActionDescriptor, request: unknown, context: RequestContext): Promise<unknown>;
 }
 
@@ -1403,3 +1403,62 @@ export interface ExecutionDiagnosticsSnapshot {
   readonly averageExecutionDurationMs: number;
   readonly slowestExecutionDurationMs: number;
 }
+
+// Application Execution Pipeline Engine Contracts
+export type ExecutionHandler<TInput = unknown, TResult = unknown> = (
+  input: TInput,
+  context: ExecutionContext,
+) => Promise<TResult> | TResult;
+
+export interface ExecutionMiddleware<TInput = unknown, TResult = unknown> {
+  execute(
+    input: TInput,
+    context: ExecutionContext,
+    next: () => Promise<TResult>,
+  ): Promise<TResult>;
+}
+
+export interface ExecutionResult<TResult = unknown> {
+  readonly success: boolean;
+  readonly value?: TResult | undefined;
+  readonly error?: unknown;
+  readonly executionId: string;
+  readonly durationMs: number;
+  readonly state: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+}
+
+export interface ExecutionOptions {
+  readonly context?: ExecutionContext | undefined;
+}
+
+export interface ExecutionEngine {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  use<TInput = unknown, TResult = unknown>(
+    middleware: ExecutionMiddleware<TInput, TResult>,
+  ): void;
+
+  execute<TInput = unknown, TResult = unknown>(
+    input: TInput,
+    handler: ExecutionHandler<TInput, TResult>,
+    options?: ExecutionOptions,
+  ): Promise<ExecutionResult<TResult>>;
+
+  readonly ready: boolean;
+}
+
+export interface ExecutionEngineDiagnosticsSnapshot {
+  readonly totalExecutions: number;
+  readonly completedExecutions: number;
+  readonly failedExecutions: number;
+  readonly cancelledExecutions: number;
+  readonly shortCircuitedExecutions: number;
+  readonly middlewareExecutions: number;
+  readonly middlewareFailures: number;
+  readonly handlerExecutions: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activeExecutions: number;
+}
+

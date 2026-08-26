@@ -11,16 +11,6 @@
     { "path": "../../foundation/contracts" },
     { "path": "../../foundation/errors" },
     { "path": "../../foundation/utils" },
-    { "path": "../metadata" },
-    { "path": "../decorators" },
-    { "path": "../di" },
-    { "path": "../request-context" },
-    { "path": "../parameter-binding" },
-    { "path": "../discovery" },
-    { "path": "../compiler" },
-    { "path": "../scanner" },
-    { "path": "../assembler" },
-    { "path": "../runtime-initializer" },
-    { "path": "../runtime-orchestrator" }
+    { "path": "../execution-context" }
   ]
 }

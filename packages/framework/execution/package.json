@@ -9,10 +9,8 @@
   },
   "dependencies": {
     "@coreforge/contracts": "0.1.0",
-    "@coreforge/di": "0.1.0",
     "@coreforge/errors": "0.1.0",
-    "@coreforge/parameter-binding": "0.1.0",
-    "@coreforge/request-context": "0.1.0",
+    "@coreforge/execution-context": "0.1.0",
     "@coreforge/types": "0.1.0",
     "@coreforge/utils": "0.1.0"
   }
