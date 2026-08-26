@@ -1746,3 +1746,109 @@ export interface EventDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activePublications: number;
 }
+
+// Application Error Handling & Classification Contracts
+export type ApplicationErrorCategory =
+  | 'VALIDATION'
+  | 'AUTHENTICATION'
+  | 'AUTHORIZATION'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'TIMEOUT'
+  | 'CANCELLED'
+  | 'RATE_LIMITED'
+  | 'DEPENDENCY'
+  | 'INTERNAL'
+  | 'UNKNOWN';
+
+export interface ApplicationError {
+  readonly name: string;
+  readonly message: string;
+  readonly code: string;
+  readonly category: ApplicationErrorCategory;
+  readonly details?: unknown;
+  readonly stack?: string | undefined;
+  readonly cause?: unknown;
+  readonly timestamp: number;
+}
+
+export type ErrorHandlerAction = 'HANDLE' | 'TRANSFORM' | 'RECOVER' | 'RETHROW';
+
+export interface ErrorHandlerResult<TResult = unknown> {
+  readonly action: ErrorHandlerAction;
+  readonly result?: TResult | undefined;
+  readonly transformedError?: unknown | undefined;
+  readonly error?: unknown | undefined;
+}
+
+export interface ErrorHandler<TError = unknown, TResult = unknown> {
+  handle(
+    error: ApplicationError,
+    context: ExecutionContext,
+    rawError?: TError,
+  ): Promise<ErrorHandlerResult<TResult>> | ErrorHandlerResult<TResult>;
+}
+
+export interface ErrorHandlerOptions {
+  readonly id?: string | undefined;
+  readonly priority?: number | undefined;
+  readonly category?: ApplicationErrorCategory | undefined;
+  readonly code?: string | undefined;
+}
+
+export interface ErrorProcessingOptions {
+  readonly context?: ExecutionContext | undefined;
+  readonly includeStack?: boolean | undefined;
+  readonly maxCauseDepth?: number | undefined;
+}
+
+export type ErrorProcessingState =
+  'HANDLED' | 'TRANSFORMED' | 'RECOVERED' | 'RETHROWN' | 'UNRESOLVED' | 'CANCELLED';
+
+export interface ErrorProcessingResult<TResult = unknown> {
+  readonly state: ErrorProcessingState;
+  readonly error: ApplicationError;
+  readonly result?: TResult | undefined;
+  readonly transformedError?: ApplicationError | undefined;
+  readonly executionId: string;
+  readonly durationMs: number;
+  readonly matchedHandlers: number;
+}
+
+export interface ErrorHandlingEngine {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  registerHandler<TError = unknown, TResult = unknown>(
+    handler: ErrorHandler<TError, TResult>,
+    options?: ErrorHandlerOptions,
+  ): void;
+
+  process<TResult = unknown>(
+    error: unknown,
+    options?: ErrorProcessingOptions,
+  ): Promise<ErrorProcessingResult<TResult>>;
+
+  classify(error: unknown): ApplicationErrorCategory;
+  normalize(error: unknown, options?: ErrorProcessingOptions): ApplicationError;
+
+  readonly ready: boolean;
+}
+
+export interface ErrorHandlingDiagnosticsSnapshot {
+  readonly totalErrors: number;
+  readonly handledErrors: number;
+  readonly transformedErrors: number;
+  readonly recoveredErrors: number;
+  readonly rethrownErrors: number;
+  readonly cancelledErrors: number;
+  readonly unknownErrors: number;
+  readonly classificationFailures: number;
+  readonly normalizationFailures: number;
+  readonly sanitizationFailures: number;
+  readonly handlerExecutions: number;
+  readonly handlerFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activeProcessing: number;
+}

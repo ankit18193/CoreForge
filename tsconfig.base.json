@@ -71,7 +71,8 @@
       "@coreforge/plugins": ["packages/framework/plugins/src/index.ts"],
       "@coreforge/kernel": ["packages/framework/kernel/src/index.ts"],
       "@coreforge/runtime": ["packages/framework/runtime/src/index.ts"],
-      "@coreforge/core": ["packages/framework/core/src/index.ts"]
+      "@coreforge/core": ["packages/framework/core/src/index.ts"],
+      "@coreforge/error-handling": ["packages/framework/error-handling/src/index.ts"]
     }
   }
 }

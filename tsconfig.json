@@ -54,6 +54,7 @@
     { "path": "packages/framework/plugins" },
     { "path": "packages/framework/kernel" },
     { "path": "packages/framework/core" },
+    { "path": "packages/framework/error-handling" },
     { "path": "apps/playground" }
   ]
 }
