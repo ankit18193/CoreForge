@@ -1,4 +1,12 @@
-export { FrameworkKernel } from './kernel/FrameworkKernel';
-export { KernelBuilder } from './kernel/KernelBuilder';
-export type { KernelOptions } from './kernel/KernelOptions';
-export type { KernelSnapshot } from './registry/KernelSnapshot';
+// Types
+export * from './types/kernelTypes';
+
+// Errors
+export * from './errors/KernelErrors';
+
+// Lifecycle State
+export * from './lifecycle/KernelState';
+
+// Registry & Resolver
+export * from './registry/KernelComponentRegistry';
+export * from './registry/KernelComponentResolver';

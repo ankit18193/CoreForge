@@ -1852,3 +1852,96 @@ export interface ErrorHandlingDiagnosticsSnapshot {
   readonly slowestDurationMs: number;
   readonly activeProcessing: number;
 }
+
+// Application Kernel & Lifecycle Coordination Contracts
+export type KernelState = 'CREATED' | 'INITIALIZING' | 'READY' | 'STOPPING' | 'STOPPED';
+
+export interface KernelComponent {
+  readonly id: string;
+  readonly name?: string | undefined;
+  readonly dependencies?: readonly string[] | undefined;
+  start(): Promise<void> | void;
+  stop(): Promise<void> | void;
+  readonly ready: boolean;
+}
+
+export interface KernelComponentOptions {
+  readonly id?: string | undefined;
+  readonly name?: string | undefined;
+  readonly dependencies?: readonly string[] | undefined;
+}
+
+export interface KernelStartOptions {
+  readonly timeoutMs?: number | undefined;
+}
+
+export interface KernelStopOptions {
+  readonly timeoutMs?: number | undefined;
+  readonly force?: boolean | undefined;
+  readonly graceful?: boolean | undefined;
+}
+
+export interface KernelOperationOptions {
+  readonly context?: ExecutionContext | undefined;
+  readonly timeoutMs?: number | undefined;
+}
+
+export interface KernelDiagnosticsSnapshot {
+  readonly startAttempts: number;
+  readonly successfulStarts: number;
+  readonly failedStarts: number;
+  readonly stopAttempts: number;
+  readonly successfulStops: number;
+  readonly failedStops: number;
+  readonly totalOperations: number;
+  readonly completedOperations: number;
+  readonly failedOperations: number;
+  readonly cancelledOperations: number;
+  readonly activeOperations: number;
+  readonly startupDurationMs: number;
+  readonly shutdownDurationMs: number;
+  readonly averageOperationDurationMs: number;
+  readonly slowestOperationDurationMs: number;
+  readonly componentStartFailures: number;
+  readonly componentStopFailures: number;
+  readonly registrationFailures: number;
+  readonly dependencyFailures: number;
+}
+
+export interface ApplicationKernel {
+  start(options?: KernelStartOptions): Promise<void>;
+  stop(options?: KernelStopOptions): Promise<void>;
+
+  registerComponent(component: KernelComponent, options?: KernelComponentOptions): void;
+
+  dispatch<TPayload = unknown, TResult = unknown>(
+    command: Command<TPayload>,
+    options?: DispatchOptions,
+  ): Promise<DispatchResult<TResult>>;
+
+  query<TPayload = unknown, TResult = unknown>(
+    query: Query<TPayload>,
+    options?: QueryOptions,
+  ): Promise<QueryResult<TResult>>;
+
+  publish<TPayload = unknown>(
+    event: Event<TPayload>,
+    options?: EventPublishOptions,
+  ): Promise<EventPublishResult>;
+
+  executeService<TInput = unknown, TResult = unknown>(
+    serviceName: string,
+    operationName: string,
+    input: TInput,
+    options?: ApplicationServiceOptions,
+  ): Promise<ApplicationResult<TResult>>;
+
+  execute<TInput = unknown, TOutput = unknown>(
+    handler: ExecutionHandler<TInput, TOutput>,
+    input: TInput,
+    options?: ExecutionOptions,
+  ): Promise<ExecutionResult<TOutput>>;
+
+  readonly state: KernelState;
+  readonly ready: boolean;
+}
