@@ -1931,14 +1931,13 @@ export interface ApplicationKernel {
 
   executeService<TInput = unknown, TResult = unknown>(
     serviceName: string,
-    operationName: string,
     input: TInput,
     options?: ApplicationServiceOptions,
   ): Promise<ApplicationResult<TResult>>;
 
   execute<TInput = unknown, TOutput = unknown>(
-    handler: ExecutionHandler<TInput, TOutput>,
     input: TInput,
+    handler: ExecutionHandler<TInput, TOutput>,
     options?: ExecutionOptions,
   ): Promise<ExecutionResult<TOutput>>;
 
