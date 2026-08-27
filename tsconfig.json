@@ -56,6 +56,7 @@
     { "path": "packages/framework/core" },
     { "path": "packages/framework/error-handling" },
     { "path": "packages/framework/hooks" },
+    { "path": "packages/framework/integration" },
     { "path": "apps/playground" }
   ]
 }

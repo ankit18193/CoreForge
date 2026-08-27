@@ -2040,3 +2040,63 @@ export interface HookManager {
   readonly ready: boolean;
   readonly state: HookState;
 }
+
+// Application Integration & End-to-End Coordination Contracts
+export type IntegrationState = 'CREATED' | 'INITIALIZING' | 'READY' | 'STOPPING' | 'STOPPED';
+
+export interface IntegrationDiagnosticsSnapshot {
+  readonly startupAttempts: number;
+  readonly successfulStarts: number;
+  readonly failedStarts: number;
+  readonly shutdownAttempts: number;
+  readonly successfulStops: number;
+  readonly failedStops: number;
+  readonly totalOperations: number;
+  readonly completedOperations: number;
+  readonly failedOperations: number;
+  readonly cancelledOperations: number;
+  readonly dispatchOperations: number;
+  readonly queryOperations: number;
+  readonly eventOperations: number;
+  readonly serviceOperations: number;
+  readonly executionOperations: number;
+  readonly integrationFailures: number;
+  readonly averageOperationDurationMs: number;
+  readonly slowestOperationDurationMs: number;
+  readonly activeOperations: number;
+}
+
+export interface ApplicationIntegration {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  dispatch<TPayload = unknown, TResult = unknown>(
+    command: Command<TPayload>,
+    options?: DispatchOptions,
+  ): Promise<DispatchResult<TResult>>;
+
+  query<TPayload = unknown, TResult = unknown>(
+    query: Query<TPayload>,
+    options?: QueryOptions,
+  ): Promise<QueryResult<TResult>>;
+
+  publish<TPayload = unknown>(
+    event: Event<TPayload>,
+    options?: EventPublishOptions,
+  ): Promise<EventPublishResult>;
+
+  executeService<TInput = unknown, TResult = unknown>(
+    serviceName: string,
+    input: TInput,
+    options?: ApplicationServiceOptions,
+  ): Promise<ApplicationResult<TResult>>;
+
+  execute<TInput = unknown, TOutput = unknown>(
+    input: TInput,
+    handler: ExecutionHandler<TInput, TOutput>,
+    options?: ExecutionOptions,
+  ): Promise<ExecutionResult<TOutput>>;
+
+  readonly state: IntegrationState;
+  readonly ready: boolean;
+}

@@ -1,0 +1,25 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*", "index.ts"],
+  "references": [
+    { "path": "../../foundation/types" },
+    { "path": "../../foundation/contracts" },
+    { "path": "../../foundation/errors" },
+    { "path": "../../foundation/utils" },
+    { "path": "../execution-context" },
+    { "path": "../execution" },
+    { "path": "../interceptors" },
+    { "path": "../dispatch" },
+    { "path": "../query" },
+    { "path": "../application" },
+    { "path": "../events" },
+    { "path": "../error-handling" },
+    { "path": "../kernel" },
+    { "path": "../hooks" }
+  ]
+}

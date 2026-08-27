@@ -1,0 +1,34 @@
+{
+  "name": "@coreforge/integration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CoreForge Application Integration & End-to-End Coordination Engine",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean && rimraf dist",
+    "test": "node --test dist/tests/integration.test.js"
+  },
+  "dependencies": {
+    "@coreforge/application": "0.1.0",
+    "@coreforge/contracts": "0.1.0",
+    "@coreforge/dispatch": "0.1.0",
+    "@coreforge/error-handling": "0.1.0",
+    "@coreforge/errors": "0.1.0",
+    "@coreforge/events": "0.1.0",
+    "@coreforge/execution": "0.1.0",
+    "@coreforge/execution-context": "0.1.0",
+    "@coreforge/hooks": "0.1.0",
+    "@coreforge/interceptors": "0.1.0",
+    "@coreforge/kernel": "0.1.0",
+    "@coreforge/query": "0.1.0",
+    "@coreforge/types": "0.1.0",
+    "@coreforge/utils": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  }
+}
