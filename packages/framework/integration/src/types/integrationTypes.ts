@@ -6,7 +6,6 @@ import {
   Command,
   DispatchOptions,
   DispatchResult,
-  ErrorHandlingEngine,
   Event,
   EventPublishOptions,
   EventPublishResult,
@@ -21,6 +20,7 @@ import {
   QueryResult,
 } from '@coreforge/contracts';
 import { Dispatcher } from '@coreforge/dispatch';
+import { ErrorHandlingEngine } from '@coreforge/error-handling';
 import { EventPublisher } from '@coreforge/events';
 import { ExecutionEngine } from '@coreforge/execution';
 import { ExecutionContextManager } from '@coreforge/execution-context';
