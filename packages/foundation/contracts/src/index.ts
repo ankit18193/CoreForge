@@ -1944,3 +1944,99 @@ export interface ApplicationKernel {
   readonly state: KernelState;
   readonly ready: boolean;
 }
+
+// Application Lifecycle Hooks & Execution Hooks Contracts
+export type HookType =
+  | 'BEFORE_START'
+  | 'AFTER_START'
+  | 'BEFORE_STOP'
+  | 'AFTER_STOP'
+  | 'BEFORE_EXECUTE'
+  | 'AFTER_EXECUTE'
+  | 'ON_ERROR';
+
+export type HookState = 'CREATED' | 'READY' | 'STOPPING' | 'STOPPED';
+
+export type HookFailureStrategy = 'CONTINUE' | 'STOP' | 'FAIL_FAST';
+
+export interface HookExecutionContext {
+  readonly context?: ExecutionContext | undefined;
+}
+
+export interface Hook<TPayload = unknown, TResult = unknown> {
+  readonly id: string;
+  readonly type: HookType;
+  readonly priority?: number | undefined;
+  execute(payload: TPayload, context?: ExecutionContext): Promise<TResult> | TResult;
+}
+
+export interface HookOptions {
+  readonly priority?: number | undefined;
+  readonly failureStrategy?: HookFailureStrategy | undefined;
+}
+
+export interface HookDispatchOptions {
+  readonly context?: ExecutionContext | undefined;
+  readonly failureStrategy?: HookFailureStrategy | undefined;
+  readonly timeoutMs?: number | undefined;
+}
+
+export interface HookExecutionResult<TResult = unknown> {
+  readonly hookId: string;
+  readonly type: HookType;
+  readonly state: 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'SKIPPED';
+  readonly success: boolean;
+  readonly value?: TResult | undefined;
+  readonly error?: unknown | undefined;
+  readonly durationMs: number;
+}
+
+export interface HookBatchResult<TResult = unknown> {
+  readonly type: HookType;
+  readonly success: boolean;
+  readonly results: readonly HookExecutionResult<TResult>[];
+  readonly totalHooks: number;
+  readonly executedHooks: number;
+  readonly failedHooks: number;
+  readonly skippedHooks: number;
+  readonly cancelledHooks: number;
+  readonly durationMs: number;
+}
+
+export interface HookDiagnosticsSnapshot {
+  readonly totalHookExecutions: number;
+  readonly successfulHookExecutions: number;
+  readonly failedHookExecutions: number;
+  readonly cancelledHookExecutions: number;
+  readonly skippedHookExecutions: number;
+  readonly beforeStartExecutions: number;
+  readonly afterStartExecutions: number;
+  readonly beforeStopExecutions: number;
+  readonly afterStopExecutions: number;
+  readonly beforeExecuteExecutions: number;
+  readonly afterExecuteExecutions: number;
+  readonly errorHookExecutions: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly activeHookExecutions: number;
+  readonly registrationFailures: number;
+}
+
+export interface HookManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  register<TPayload = unknown, TResult = unknown>(
+    hook: Hook<TPayload, TResult>,
+    options?: HookOptions,
+  ): void;
+
+  execute<TPayload = unknown, TResult = unknown>(
+    type: HookType,
+    payload?: TPayload,
+    options?: HookDispatchOptions,
+  ): Promise<HookBatchResult<TResult>>;
+
+  readonly ready: boolean;
+  readonly state: HookState;
+}
