@@ -1,7 +1,7 @@
 import { NormalizedRequest } from '@coreforge/contracts';
 import { ErrorResponseMapper, ExceptionContext } from '@coreforge/exceptions';
-import { DefaultTransportRequestNormalizer } from '@coreforge/transport';
 
+import { DefaultTransportRequestNormalizer } from './DefaultTransportRequestNormalizer';
 import { RuntimeDiagnostics } from '../diagnostics/RuntimeDiagnostics';
 import { RuntimeProfiler } from '../internal/RuntimeProfiler';
 import { RuntimeLifecycleManager } from '../lifecycle/RuntimeLifecycleManager';

@@ -1,52 +1,47 @@
 import {
-  NormalizedRequest,
-  RequestContext,
-  ResponseDescriptor,
   TransportAdapter,
+  TransportAdapterOptions,
+  TransportCapability,
+  TransportContext,
+  TransportDiagnosticsSnapshot,
+  TransportExecutionOptions,
+  TransportManager as ITransportManager,
+  TransportMetadata,
   TransportRequest,
-  TransportRequestNormalizer,
   TransportResponse,
-  TransportResponseWriter,
+  TransportResult,
+  TransportState,
 } from '@coreforge/contracts';
+import { ExecutionContextManager } from '@coreforge/execution-context';
+import { ApplicationIntegration } from '@coreforge/integration';
 
 export type {
-  NormalizedRequest,
-  RequestContext,
-  ResponseDescriptor,
+  ITransportManager,
   TransportAdapter,
+  TransportAdapterOptions,
+  TransportCapability,
+  TransportContext,
+  TransportDiagnosticsSnapshot,
+  TransportExecutionOptions,
+  TransportMetadata,
   TransportRequest,
-  TransportRequestNormalizer,
   TransportResponse,
-  TransportResponseWriter,
+  TransportResult,
+  TransportState,
 };
 
-export interface TransportExecutionOptions {
-  readonly timeoutMs?: number | undefined;
-  readonly correlationId?: string | undefined;
-  readonly traceId?: string | undefined;
-  readonly abortSignal?: AbortSignal | undefined;
+export interface RegisteredAdapterEntry<TRequest = unknown, TResponse = unknown> {
+  readonly id: string;
+  readonly name: string;
+  readonly adapter: TransportAdapter<TRequest, TResponse>;
+  readonly priority: number;
+  readonly capabilities: readonly TransportCapability[];
+  readonly sequence: number;
 }
 
-export interface TransportAdapterOptions {
-  readonly allowOverride?: boolean | undefined;
-  readonly enableDiagnostics?: boolean | undefined;
-}
-
-export interface TransportPipelineResult {
-  readonly descriptor: ResponseDescriptor;
-  readonly durationMs: number;
-  readonly success: boolean;
-}
-
-export interface TransportDiagnosticsSnapshot {
-  readonly totalRequests: number;
-  readonly successfulRequests: number;
-  readonly failedRequests: number;
-  readonly abortedRequests: number;
-  readonly normalizationFailures: number;
-  readonly responseWriteFailures: number;
-  readonly averageDurationMs: number;
-  readonly slowestDurationMs: number;
-  readonly statusDistribution: Readonly<Record<number, number>>;
-  readonly timestamp: number;
+export interface TransportManagerOptions {
+  readonly application?: ApplicationIntegration | undefined;
+  readonly contextManager?: ExecutionContextManager | undefined;
+  readonly autoStart?: boolean | undefined;
+  readonly defaultTimeoutMs?: number | undefined;
 }

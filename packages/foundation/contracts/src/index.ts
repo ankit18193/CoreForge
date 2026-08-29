@@ -597,7 +597,7 @@ export interface ExceptionPipeline {
   handle(error: unknown, context: ExceptionContext): Promise<ErrorDescriptor>;
 }
 
-// Canonical Normalized Request & Transport Boundary Contracts
+// Canonical Normalized Request
 export interface NormalizedRequest {
   readonly method?: string | undefined;
   readonly path?: string | undefined;
@@ -606,31 +606,6 @@ export interface NormalizedRequest {
   readonly body?: unknown | undefined;
   readonly headers?: Readonly<Record<string, string | readonly string[] | undefined>> | undefined;
   readonly cookies?: Readonly<Record<string, string | undefined>> | undefined;
-}
-
-export type TransportRequest = NormalizedRequest;
-
-export interface TransportResponse {
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string | readonly string[]>>;
-  readonly contentType?: string | undefined;
-  readonly body: unknown;
-}
-
-export interface TransportRequestNormalizer<TNativeRequest = unknown> {
-  normalize(request: TNativeRequest): NormalizedRequest;
-}
-
-export interface TransportResponseWriter<TNativeResponse = unknown> {
-  write(response: TNativeResponse, descriptor: ResponseDescriptor): void | Promise<void>;
-}
-
-export interface TransportAdapter<TNativeRequest = unknown, TNativeResponse = unknown> {
-  readonly name: string;
-
-  normalizeRequest(request: TNativeRequest): NormalizedRequest;
-
-  writeResponse(response: TNativeResponse, descriptor: ResponseDescriptor): void | Promise<void>;
 }
 
 // Routing & Route Matching Engine Contracts
@@ -2099,4 +2074,102 @@ export interface ApplicationIntegration {
 
   readonly state: IntegrationState;
   readonly ready: boolean;
+}
+
+// Transport Contracts & Adapter Abstraction Layer
+export type TransportState = 'CREATED' | 'READY' | 'STOPPING' | 'STOPPED';
+
+export type TransportCapability =
+  'REQUEST' | 'RESPONSE' | 'STREAMING' | 'BIDIRECTIONAL' | 'CANCELLATION' | 'METADATA';
+
+export type TransportMetadata = Record<string, unknown>;
+
+export interface TransportRequest<TPayload = unknown> {
+  readonly payload: TPayload;
+  readonly metadata: TransportMetadata;
+  readonly context?: ExecutionContext | undefined;
+}
+
+export interface TransportResponse<TBody = unknown> {
+  readonly success: boolean;
+  readonly body?: TBody | undefined;
+  readonly error?: unknown;
+  readonly metadata?: TransportMetadata | undefined;
+}
+
+export interface TransportContext {
+  readonly executionContext: ExecutionContext;
+  readonly transportType: string;
+  readonly metadata: TransportMetadata;
+}
+
+export interface TransportAdapter<TRequest = unknown, TResponse = unknown> {
+  readonly id: string;
+  readonly name: string;
+  readonly priority?: number | undefined;
+  readonly capabilities: readonly TransportCapability[];
+  handle?(
+    request: TransportRequest<TRequest>,
+    context: TransportContext,
+  ): Promise<TransportResponse<TResponse>> | TransportResponse<TResponse>;
+}
+
+export interface TransportAdapterOptions {
+  readonly priority?: number | undefined;
+  readonly capabilities?: readonly TransportCapability[] | undefined;
+}
+
+export interface TransportExecutionOptions {
+  readonly context?: ExecutionContext | undefined;
+  readonly timeoutMs?: number | undefined;
+  readonly adapterId?: string | undefined;
+}
+
+export interface TransportResult<TResponse = unknown> {
+  readonly success: boolean;
+  readonly response?: TransportResponse<TResponse> | undefined;
+  readonly error?: unknown;
+  readonly durationMs: number;
+}
+
+export interface TransportDiagnosticsSnapshot {
+  readonly adapterRegistrations: number;
+  readonly registrationFailures: number;
+  readonly totalRequests: number;
+  readonly successfulRequests: number;
+  readonly failedRequests: number;
+  readonly cancelledRequests: number;
+  readonly activeRequests: number;
+  readonly adapterResolutions: number;
+  readonly resolutionFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+}
+
+export interface TransportManager {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+
+  registerAdapter<TRequest = unknown, TResponse = unknown>(
+    adapter: TransportAdapter<TRequest, TResponse>,
+    options?: TransportAdapterOptions,
+  ): void;
+
+  resolveAdapter<TRequest = unknown, TResponse = unknown>(
+    id: string,
+  ): TransportAdapter<TRequest, TResponse>;
+
+  resolveByCapability(
+    capability: TransportCapability,
+  ): readonly TransportAdapter<unknown, unknown>[];
+
+  execute<TRequest = unknown, TResponse = unknown>(
+    request: TransportRequest<TRequest>,
+    options?: TransportExecutionOptions,
+  ): Promise<TransportResult<TResponse>>;
+
+  readonly state: TransportState;
+  readonly ready: boolean;
+  getDiagnostics(): TransportDiagnosticsSnapshot;
+  resetDiagnostics(): void;
 }

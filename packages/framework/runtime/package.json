@@ -21,7 +21,6 @@
     "@coreforge/execution": "0.1.0",
     "@coreforge/response": "0.1.0",
     "@coreforge/exceptions": "0.1.0",
-    "@coreforge/transport": "0.1.0",
     "@coreforge/discovery": "0.1.0",
     "@coreforge/compiler": "0.1.0",
     "@coreforge/types": "0.1.0",

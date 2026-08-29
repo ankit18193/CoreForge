@@ -2,19 +2,25 @@
   "name": "@coreforge/transport",
   "version": "0.1.0",
   "private": true,
+  "description": "CoreForge Transport Contracts & Adapter Abstraction Layer",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "clean": "tsc -b --clean && rimraf dist",
+    "test": "node --test dist/tests/transport.test.js"
   },
   "dependencies": {
     "@coreforge/contracts": "0.1.0",
     "@coreforge/errors": "0.1.0",
-    "@coreforge/exceptions": "0.1.0",
-    "@coreforge/execution": "0.1.0",
-    "@coreforge/request-context": "0.1.0",
-    "@coreforge/response": "0.1.0",
+    "@coreforge/execution-context": "0.1.0",
+    "@coreforge/integration": "0.1.0",
     "@coreforge/types": "0.1.0",
     "@coreforge/utils": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
   }
 }

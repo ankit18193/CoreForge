@@ -22,13 +22,13 @@ import { ParameterBindingCompiler } from '@coreforge/parameter-binding';
 import { RequestContextManager } from '@coreforge/request-context';
 import { ResponseProcessor } from '@coreforge/response';
 import { RouteCompiler, RouteMatcher, RouteRegistry } from '@coreforge/routing';
-import { TransportPipeline } from '@coreforge/transport';
 
 import {
   RuntimeComponentRegistry,
   RuntimeOrchestrator,
   RuntimePipelineResult,
   RuntimeStateError,
+  TransportPipeline,
 } from '../src/index';
 
 class MockResponseWriter {

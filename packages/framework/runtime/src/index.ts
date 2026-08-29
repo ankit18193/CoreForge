@@ -19,6 +19,8 @@ export * from './registry/RuntimeComponentRegistry';
 // Pipeline
 export * from './pipeline/RuntimePipelineResult';
 export * from './pipeline/RuntimeRequestPipeline';
+export * from './pipeline/TransportPipeline';
+export * from './pipeline/DefaultTransportRequestNormalizer';
 
 // Shutdown
 export * from './shutdown/ShutdownCoordinator';

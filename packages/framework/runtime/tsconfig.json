@@ -20,7 +20,6 @@
     { "path": "../execution" },
     { "path": "../response" },
     { "path": "../exceptions" },
-    { "path": "../transport" },
     { "path": "../discovery" },
     { "path": "../compiler" }
   ]

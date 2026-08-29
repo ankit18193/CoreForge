@@ -1,49 +1,55 @@
 import { CoreForgeError } from '@coreforge/errors';
 
 export class TransportError extends CoreForgeError {
-  constructor(message: string, code = 'CF-TRANSPORT-ERROR', details?: unknown) {
+  constructor(message: string, code = 'CF-TRANSPORT', details?: unknown) {
     super(message, code, details);
   }
 }
 
 export class TransportConfigurationError extends TransportError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-TRANSPORT-CONFIG-ERROR', details);
+    super(message, 'CF-TRANSPORT-CONFIGURATION', details);
   }
 }
 
-export class TransportAdapterError extends TransportError {
+export class TransportRegistrationError extends TransportError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-TRANSPORT-ADAPTER-ERROR', details);
+    super(message, 'CF-TRANSPORT-REGISTRATION', details);
   }
 }
 
-export class TransportNormalizationError extends TransportError {
+export class TransportAdapterNotFoundError extends TransportError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-TRANSPORT-NORMALIZATION-ERROR', details);
-  }
-}
-
-export class TransportResponseError extends TransportError {
-  constructor(message: string, details?: unknown) {
-    super(message, 'CF-TRANSPORT-RESPONSE-ERROR', details);
+    super(message, 'CF-TRANSPORT-ADAPTER-NOT-FOUND', details);
   }
 }
 
 export class TransportStateError extends TransportError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-TRANSPORT-STATE-ERROR', details);
+    super(message, 'CF-TRANSPORT-STATE', details);
   }
 }
 
-export class TransportPipelineError extends TransportError {
+export class TransportValidationError extends TransportError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-TRANSPORT-PIPELINE-ERROR', details);
+    super(message, 'CF-TRANSPORT-VALIDATION', details);
   }
 }
 
-export class TransportShutdownError extends TransportError {
+export class TransportExecutionError extends TransportError {
   constructor(message: string, details?: unknown) {
-    super(message, 'CF-TRANSPORT-SHUTDOWN-ERROR', details);
+    super(message, 'CF-TRANSPORT-EXECUTION', details);
+  }
+}
+
+export class TransportCancellationError extends TransportError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CF-TRANSPORT-CANCELLATION', details);
+  }
+}
+
+export class TransportTimeoutError extends TransportError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CF-TRANSPORT-TIMEOUT', details);
   }
 }

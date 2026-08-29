@@ -6,9 +6,9 @@ import { ParameterBindingResolver } from '@coreforge/parameter-binding';
 import { RequestContextManager } from '@coreforge/request-context';
 import { ResponseProcessor } from '@coreforge/response';
 import { RouteMatcher } from '@coreforge/routing';
-import { TransportPipeline } from '@coreforge/transport';
 
 import { RuntimeConfigurationError, RuntimeStateError } from '../errors/RuntimeErrors';
+import { TransportPipeline } from '../pipeline/TransportPipeline';
 
 export interface RuntimeComponents {
   readonly metadataRegistry?: MetadataRegistry | undefined;
