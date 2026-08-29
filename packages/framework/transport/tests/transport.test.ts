@@ -41,7 +41,7 @@ import {
 
 test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)', async (t) => {
   // =========================================================================
-  // 1. CONTRACTS & STANDARD ERRORS (Stage 1)
+  // 1. CONTRACTS & STANDARD ERRORS
   // =========================================================================
   await t.test('1. Type & Contract exports are valid', () => {
     const state: TransportState = 'CREATED';
@@ -167,7 +167,7 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
   );
 
   // =========================================================================
-  // 2. REQUEST VALIDATION & SNAPSHOTTING (Stage 2)
+  // 2. REQUEST VALIDATION & SNAPSHOTTING
   // =========================================================================
   await t.test(
     '3. TransportRequestValidator: Validates structure and rejects invalid inputs',
@@ -270,7 +270,7 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
   );
 
   // =========================================================================
-  // 3. RESPONSE VALIDATION & FACTORY (Stage 2)
+  // 3. RESPONSE VALIDATION & FACTORY
   // =========================================================================
   await t.test('6. TransportResponseValidator: Validates response contracts', () => {
     assert.throws(
@@ -343,10 +343,34 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
     assert.strictEqual(appFailure.success, false);
     assert.ok(appFailure.error instanceof Error);
     assert.strictEqual(appFailure.metadata?.state, 'FAILED');
+
+    // fromDispatchResult mapping
+    const dispatchRes = TransportResponseFactory.fromDispatchResult({
+      success: true,
+      value: { processed: true },
+      commandType: 'ProcessTask',
+      executionId: 'exec-201',
+      durationMs: 2.1,
+      state: 'COMPLETED',
+    });
+    assert.strictEqual(dispatchRes.success, true);
+    assert.strictEqual((dispatchRes.body as { processed: boolean }).processed, true);
+
+    // fromQueryResult mapping
+    const queryRes = TransportResponseFactory.fromQueryResult({
+      success: true,
+      value: { balance: 1000 },
+      queryType: 'GetBalance',
+      executionId: 'exec-202',
+      durationMs: 1.8,
+      state: 'COMPLETED',
+    });
+    assert.strictEqual(queryRes.success, true);
+    assert.strictEqual((queryRes.body as { balance: number }).balance, 1000);
   });
 
   // =========================================================================
-  // 4. TRANSPORT CONTEXT (Stage 2)
+  // 4. TRANSPORT CONTEXT
   // =========================================================================
   await t.test('8. TransportContextFactory: Bridges ExecutionContext and freezes context', () => {
     const contextManager = new ExecutionContextManager();
@@ -371,7 +395,7 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
   });
 
   // =========================================================================
-  // 5. ADAPTER REGISTRY & RESOLUTION (Stage 3)
+  // 5. ADAPTER REGISTRY & RESOLUTION
   // =========================================================================
   await t.test(
     '9. TransportAdapterRegistry: Registers adapters and maintains immutable list',
@@ -573,7 +597,7 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
   );
 
   // =========================================================================
-  // 6. LIFECYCLE & EXECUTION COORDINATION (Stage 4)
+  // 6. LIFECYCLE & EXECUTION COORDINATION
   // =========================================================================
   await t.test(
     '15. TransportManager: Lifecycle transitions and idempotent start/stop',
@@ -708,7 +732,7 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
     await manager.stop();
   });
 
-  await t.test('20. TransportDiagnostics: Pure numerical metrics and reset', async () => {
+  await t.test('20. TransportDiagnostics: Pure numerical metrics and security', async () => {
     const manager = new TransportManager();
 
     manager.registerAdapter({
@@ -726,12 +750,18 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
     await manager.execute({ payload: { b: 2 }, metadata: {} });
 
     const diag = manager.getDiagnostics();
+    const serialized = JSON.stringify(diag);
+
     assert.strictEqual(diag.adapterRegistrations, 1);
     assert.strictEqual(diag.totalRequests, 2);
     assert.strictEqual(diag.successfulRequests, 2);
     assert.strictEqual(diag.failedRequests, 0);
     assert.strictEqual(diag.activeRequests, 0);
     assert.strictEqual(typeof diag.averageDurationMs, 'number');
+
+    // Security check: no credentials, payloads, or execution IDs in diagnostics
+    assert.strictEqual(serialized.includes('secret'), false);
+    assert.strictEqual(serialized.includes('password'), false);
 
     manager.resetDiagnostics();
     const resetDiag = manager.getDiagnostics();
@@ -762,10 +792,144 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
   });
 
   // =========================================================================
-  // 7. ARCHITECTURAL BOUNDARY
+  // 7. HIGH CONCURRENCY ISOLATION (1,000 OPERATIONS)
   // =========================================================================
   await t.test(
-    '22. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
+    '22. High-Concurrency Isolation: 1,000 concurrent transport executions maintain strict isolation',
+    async () => {
+      const manager = new TransportManager();
+
+      manager.registerAdapter<{ index: number }, { result: number }>({
+        id: 'concurrent-adapter',
+        name: 'Concurrent Adapter',
+        priority: 100,
+        capabilities: ['REQUEST', 'RESPONSE'],
+        async handle(request) {
+          return TransportResponseFactory.createSuccess({
+            result: request.payload.index * 10,
+          });
+        },
+      });
+
+      await manager.start();
+
+      const promises: Promise<void>[] = [];
+
+      for (let i = 0; i < 1000; i++) {
+        const index = i;
+        promises.push(
+          manager
+            .execute<{ index: number }, { result: number }>({
+              payload: { index },
+              metadata: { opId: index },
+            })
+            .then((res) => {
+              assert.strictEqual(res.success, true);
+              assert.strictEqual(res.response?.body?.result, index * 10);
+            }),
+        );
+      }
+
+      await Promise.all(promises);
+
+      const diag = manager.getDiagnostics();
+      assert.strictEqual(diag.totalRequests, 1000);
+      assert.strictEqual(diag.successfulRequests, 1000);
+      assert.strictEqual(diag.failedRequests, 0);
+      assert.strictEqual(diag.activeRequests, 0);
+
+      await manager.stop();
+    },
+  );
+
+  // =========================================================================
+  // 8. FULL MULTI-ADAPTER END-TO-END SCENARIO
+  // =========================================================================
+  await t.test(
+    '23. Multi-Adapter End-to-End Scenario: Multiple transports route to unified application layer',
+    async () => {
+      const app = new ApplicationIntegration();
+
+      app.dispatcher.register<{ amount: number; user: string }, { orderId: string }>(
+        'CreateOrder',
+        {
+          async execute(payload) {
+            return { orderId: `ord-${payload.user}-${payload.amount}` };
+          },
+        },
+      );
+
+      await app.start();
+
+      const builder = TransportBuilder.create()
+        .withApplication(app)
+        .registerAdapter({
+          id: 'http-adapter',
+          name: 'HTTP Transport Adapter',
+          priority: 100,
+          capabilities: ['REQUEST', 'RESPONSE'],
+          async handle(request, context) {
+            const body = request.payload as { user: string; amount: number };
+            const appRes = await app.dispatch<
+              { amount: number; user: string },
+              { orderId: string }
+            >({ type: 'CreateOrder', payload: body }, { context: context.executionContext });
+            return TransportResponseFactory.fromDispatchResult(appRes, {
+              transport: 'http',
+            });
+          },
+        })
+        .registerAdapter({
+          id: 'cli-adapter',
+          name: 'CLI Transport Adapter',
+          priority: 50,
+          capabilities: ['REQUEST'],
+          async handle(request, context) {
+            const body = request.payload as { user: string; amount: number };
+            const appRes = await app.dispatch<
+              { amount: number; user: string },
+              { orderId: string }
+            >({ type: 'CreateOrder', payload: body }, { context: context.executionContext });
+            return TransportResponseFactory.fromDispatchResult(appRes, {
+              transport: 'cli',
+            });
+          },
+        });
+
+      const transport = builder.build();
+      await transport.start();
+
+      // 1. Execute through HTTP adapter
+      const httpResult = await transport.execute(
+        { payload: { user: 'alice', amount: 200 }, metadata: {} },
+        { adapterId: 'http-adapter' },
+      );
+      assert.strictEqual(httpResult.success, true);
+      assert.strictEqual(
+        (httpResult.response?.body as { orderId: string }).orderId,
+        'ord-alice-200',
+      );
+      assert.strictEqual(httpResult.response?.metadata?.transport, 'http');
+
+      // 2. Execute through CLI adapter
+      const cliResult = await transport.execute(
+        { payload: { user: 'bob', amount: 50 }, metadata: {} },
+        { adapterId: 'cli-adapter' },
+      );
+      assert.strictEqual(cliResult.success, true);
+      assert.strictEqual((cliResult.response?.body as { orderId: string }).orderId, 'ord-bob-50');
+      assert.strictEqual(cliResult.response?.metadata?.transport, 'cli');
+
+      await transport.stop();
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 9. ARCHITECTURAL BOUNDARY VERIFICATION
+  // =========================================================================
+  await t.test(
+    '24. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
     () => {
       const pkgJsonPath = path.resolve(__dirname, '../../package.json');
       const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));

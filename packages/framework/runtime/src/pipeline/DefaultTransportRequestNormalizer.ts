@@ -36,6 +36,17 @@ export class DefaultTransportRequestNormalizer {
       string,
       unknown
     >;
+
+    if (typeof req.url === 'string' && req.url.includes('?')) {
+      const queryString = req.url.split('?')[1];
+      const params = new URLSearchParams(queryString);
+      for (const [key, val] of params.entries()) {
+        if (!(key in query)) {
+          query[key] = val;
+        }
+      }
+    }
+
     const params = (
       req.params && typeof req.params === 'object' ? { ...req.params } : {}
     ) as Record<string, unknown>;
