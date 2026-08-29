@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { test } from 'node:test';
 
 import { CoreForgeError } from '@coreforge/errors';
+import { ExecutionContextManager } from '@coreforge/execution-context';
 
 import {
   TransportAdapter,
@@ -12,6 +13,8 @@ import {
   TransportCancellationError,
   TransportCapability,
   TransportConfigurationError,
+  TransportContext,
+  TransportContextFactory,
   TransportDiagnosticsSnapshot,
   TransportError,
   TransportExecutionError,
@@ -19,7 +22,11 @@ import {
   TransportMetadata,
   TransportRegistrationError,
   TransportRequest,
+  TransportRequestSnapshot,
+  TransportRequestValidator,
   TransportResponse,
+  TransportResponseFactory,
+  TransportResponseValidator,
   TransportResult,
   TransportState,
   TransportStateError,
@@ -27,7 +34,10 @@ import {
   TransportValidationError,
 } from '../src/index';
 
-test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport) - Stage 1', async (t) => {
+test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)', async (t) => {
+  // =========================================================================
+  // 1. CONTRACTS & STANDARD ERRORS (Stage 1)
+  // =========================================================================
   await t.test('1. Type & Contract exports are valid', () => {
     const state: TransportState = 'CREATED';
     assert.strictEqual(state, 'CREATED');
@@ -151,8 +161,215 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
     },
   );
 
+  // =========================================================================
+  // 2. REQUEST VALIDATION & SNAPSHOTTING (Stage 2)
+  // =========================================================================
   await t.test(
-    '3. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
+    '3. TransportRequestValidator: Validates structure and rejects invalid inputs',
+    () => {
+      assert.throws(
+        () => TransportRequestValidator.validate(null),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+      assert.throws(
+        () => TransportRequestValidator.validate(undefined),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+      assert.throws(
+        () => TransportRequestValidator.validate('string'),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+      assert.throws(
+        () => TransportRequestValidator.validate(123),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+      assert.throws(
+        () => TransportRequestValidator.validate({}),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+      assert.throws(
+        () => TransportRequestValidator.validate({ payload: 123, metadata: 'invalid' }),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+      assert.throws(
+        () => TransportRequestValidator.validate({ payload: 123, metadata: [1, 2, 3] }),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+      assert.throws(
+        () => TransportRequestValidator.validate({ payload: 123, context: 'invalid' }),
+        (err: Error) => err instanceof TransportValidationError,
+      );
+
+      const validReq = TransportRequestValidator.validate<{ userId: string }>({
+        payload: { userId: 'u-123' },
+        metadata: { trace: 'tr-1' },
+      });
+      assert.strictEqual(validReq.payload.userId, 'u-123');
+      assert.strictEqual(validReq.metadata.trace, 'tr-1');
+    },
+  );
+
+  await t.test('4. TransportRequestSnapshot: Deep cloning and producer mutation isolation', () => {
+    const rawPayload = {
+      nested: {
+        field: 'original_value',
+        items: [1, 2, 3],
+      },
+    };
+    const rawMetadata = {
+      source: 'producer_client',
+      tags: ['alpha', 'beta'],
+    };
+
+    const snapshot = TransportRequestSnapshot.create<{
+      nested: { field: string; items: number[] };
+    }>({
+      payload: rawPayload,
+      metadata: rawMetadata,
+    });
+
+    // Producer mutates original object
+    rawPayload.nested.field = 'mutated_value';
+    rawPayload.nested.items.push(999);
+    rawMetadata.source = 'mutated_source';
+    rawMetadata.tags.push('gamma');
+
+    // Snapshot is completely isolated
+    assert.strictEqual(snapshot.payload.nested.field, 'original_value');
+    assert.deepStrictEqual(snapshot.payload.nested.items, [1, 2, 3]);
+    assert.strictEqual(snapshot.metadata.source, 'producer_client');
+    assert.deepStrictEqual(snapshot.metadata.tags, ['alpha', 'beta']);
+  });
+
+  await t.test(
+    '5. TransportRequestSnapshot: Circular reference detection and deep freeze immutability',
+    () => {
+      const cyclicObj: { name: string; self?: unknown } = { name: 'cyclic_node' };
+      cyclicObj.self = cyclicObj;
+
+      const snapshot = TransportRequestSnapshot.create<{ name: string; self: unknown }>({
+        payload: cyclicObj,
+      });
+
+      assert.strictEqual(snapshot.payload.name, 'cyclic_node');
+      assert.strictEqual(snapshot.payload.self, '[Circular]');
+
+      // Snapshot object and nested objects are frozen
+      assert.throws(() => {
+        (snapshot as { payload: unknown }).payload = { name: 'new' };
+      });
+      assert.throws(() => {
+        (snapshot.payload as { name: string }).name = 'mutated';
+      });
+    },
+  );
+
+  // =========================================================================
+  // 3. RESPONSE VALIDATION & FACTORY (Stage 2)
+  // =========================================================================
+  await t.test('6. TransportResponseValidator: Validates response contracts', () => {
+    assert.throws(
+      () => TransportResponseValidator.validate(null),
+      (err: Error) => err instanceof TransportValidationError,
+    );
+    assert.throws(
+      () => TransportResponseValidator.validate({}),
+      (err: Error) => err instanceof TransportValidationError,
+    );
+    assert.throws(
+      () => TransportResponseValidator.validate({ success: 'yes' }),
+      (err: Error) => err instanceof TransportValidationError,
+    );
+    assert.throws(
+      () => TransportResponseValidator.validate({ success: true, metadata: 'bad' }),
+      (err: Error) => err instanceof TransportValidationError,
+    );
+
+    const validRes = TransportResponseValidator.validate({
+      success: true,
+      body: { data: 42 },
+      metadata: { server: 'node-1' },
+    });
+    assert.strictEqual(validRes.success, true);
+    assert.strictEqual((validRes.body as { data: number }).data, 42);
+  });
+
+  await t.test('7. TransportResponseFactory: Creates frozen success and failure responses', () => {
+    const successRes = TransportResponseFactory.createSuccess<{ token: string }>(
+      { token: 'abc-xyz' },
+      { origin: 'auth' },
+    );
+    assert.strictEqual(successRes.success, true);
+    assert.strictEqual(successRes.body?.token, 'abc-xyz');
+    assert.strictEqual(successRes.metadata?.origin, 'auth');
+    assert.throws(() => {
+      (successRes as { success: boolean }).success = false;
+    });
+
+    const failureRes = TransportResponseFactory.createFailure(new Error('Access denied'), {
+      code: 'AUTH_FAIL',
+    });
+    assert.strictEqual(failureRes.success, false);
+    assert.ok(failureRes.error instanceof Error);
+    assert.strictEqual(failureRes.metadata?.code, 'AUTH_FAIL');
+
+    // fromApplicationResult mapping
+    const appSuccess = TransportResponseFactory.fromApplicationResult({
+      success: true,
+      value: { orderId: 'ord-1' },
+      serviceType: 'OrderService',
+      executionId: 'exec-101',
+      durationMs: 4.2,
+      state: 'COMPLETED',
+    });
+    assert.strictEqual(appSuccess.success, true);
+    assert.strictEqual(appSuccess.body?.orderId, 'ord-1');
+    assert.strictEqual(appSuccess.metadata?.serviceType, 'OrderService');
+    assert.strictEqual(appSuccess.metadata?.executionId, 'exec-101');
+
+    const appFailure = TransportResponseFactory.fromApplicationResult({
+      success: false,
+      error: new Error('Order creation failed'),
+      serviceType: 'OrderService',
+      executionId: 'exec-102',
+      durationMs: 5.5,
+      state: 'FAILED',
+    });
+    assert.strictEqual(appFailure.success, false);
+    assert.ok(appFailure.error instanceof Error);
+    assert.strictEqual(appFailure.metadata?.state, 'FAILED');
+  });
+
+  // =========================================================================
+  // 4. TRANSPORT CONTEXT (Stage 2)
+  // =========================================================================
+  await t.test('8. TransportContextFactory: Bridges ExecutionContext and freezes context', () => {
+    const contextManager = new ExecutionContextManager();
+    const customCtx = contextManager.create({ autoStart: true });
+
+    const transportCtx: TransportContext = TransportContextFactory.create('HTTP_ADAPTER', {
+      executionContext: customCtx,
+      metadata: { endpoint: '/api/v1/orders' },
+    });
+
+    assert.strictEqual(transportCtx.transportType, 'HTTP_ADAPTER');
+    assert.strictEqual(transportCtx.executionContext.executionId, customCtx.executionId);
+    assert.strictEqual(transportCtx.executionContext.state, 'ACTIVE');
+    assert.strictEqual(transportCtx.metadata.endpoint, '/api/v1/orders');
+    assert.strictEqual(transportCtx.metadata.transportType, 'HTTP_ADAPTER');
+
+    // Default context creation when none is provided
+    const autoTransportCtx = TransportContextFactory.create('CLI_ADAPTER');
+    assert.strictEqual(autoTransportCtx.transportType, 'CLI_ADAPTER');
+    assert.ok(autoTransportCtx.executionContext.executionId);
+    assert.strictEqual(autoTransportCtx.executionContext.state, 'ACTIVE');
+  });
+
+  // =========================================================================
+  // 5. ARCHITECTURAL BOUNDARY
+  // =========================================================================
+  await t.test(
+    '9. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
     () => {
       const pkgJsonPath = path.resolve(__dirname, '../../package.json');
       const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
