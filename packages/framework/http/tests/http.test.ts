@@ -708,9 +708,184 @@ test('CoreForge HTTP Transport Adapter & Request Execution Engine (@coreforge/ht
   );
 
   // =========================================================================
-  // 6. ARCHITECTURAL BOUNDARY (Stage 1)
+  // 6. INTEGRATION, CONCURRENCY & VERIFICATION (Stage 5)
   // =========================================================================
-  await t.test('18. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
+  await t.test('18. End-to-End Command Dispatch via HTTP Transport', async () => {
+    const app = ApplicationIntegrationBuilder.create().build();
+    app.dispatcher.register('CreateUser', {
+      async execute(payload: unknown) {
+        const p = payload as { userId: string; name: string };
+        return { userId: p.userId, name: p.name, status: 'CREATED' };
+      },
+    });
+    await app.start();
+
+    const httpManager = HttpTransportBuilder.create()
+      .withApplication(app)
+      .withAutoStart(true)
+      .build();
+
+    const response = await httpManager.execute<
+      { type: string; payload: { userId: string; name: string } },
+      { userId: string; name: string; status: string }
+    >({
+      method: 'POST',
+      url: '/commands/create-user',
+      path: '/commands/create-user',
+      headers: { 'Content-Type': 'application/json' },
+      body: { type: 'CreateUser', payload: { userId: 'u-101', name: 'Alice' } },
+    });
+
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.body?.userId, 'u-101');
+    assert.strictEqual(response.body?.status, 'CREATED');
+
+    await httpManager.stop();
+    await app.stop();
+  });
+
+  await t.test(
+    '19. High-Concurrency Stress Test: 1,000 concurrent HTTP requests through transport engine',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('compute', {
+        async execute(input: unknown) {
+          const num = (input as { n: number }).n;
+          return { result: num * 2 };
+        },
+      });
+      await app.start();
+
+      const httpManager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withDefaultTimeout(10000)
+        .withAutoStart(true)
+        .build();
+
+      const totalRequests = 1000;
+      const tasks = Array.from({ length: totalRequests }, (_, i) => {
+        return httpManager.execute<
+          { serviceName: string; input: { n: number } },
+          { result: number }
+        >({
+          method: 'POST',
+          url: `/compute/${i}`,
+          path: `/compute/${i}`,
+          headers: { 'Content-Type': 'application/json' },
+          body: { serviceName: 'compute', input: { n: i } },
+        });
+      });
+
+      const results = await Promise.all(tasks);
+
+      // Verify all 1,000 completed with 200 OK and accurate results
+      assert.strictEqual(results.length, totalRequests);
+      for (let i = 0; i < totalRequests; i++) {
+        assert.strictEqual(results[i].status, 200);
+        assert.strictEqual(results[i].body?.result, i * 2);
+      }
+
+      // Verify diagnostics accuracy
+      const diag = httpManager.getDiagnostics();
+      assert.strictEqual(diag.totalRequests, totalRequests);
+      assert.strictEqual(diag.successfulRequests, totalRequests);
+      assert.strictEqual(diag.failedRequests, 0);
+      assert.strictEqual(diag.activeRequests, 0);
+      assert.ok(diag.averageDurationMs > 0);
+
+      await httpManager.stop();
+      await app.stop();
+    },
+  );
+
+  await t.test('20. Timeout and Cancellation under Load', async () => {
+    const app = ApplicationIntegrationBuilder.create().build();
+    app.applicationManager.register('slow', {
+      async execute(_input: unknown) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return { done: true };
+      },
+    });
+    await app.start();
+
+    const httpManager = HttpTransportBuilder.create()
+      .withApplication(app)
+      .withDefaultTimeout(50) // 50ms timeout to force timeout
+      .withAutoStart(true)
+      .build();
+
+    // 1. Timeout test -> 504 Gateway Timeout
+    const timeoutRes = await httpManager.execute({
+      method: 'POST',
+      url: '/slow',
+      path: '/slow',
+      headers: {},
+      body: { serviceName: 'slow', input: {} },
+    });
+    assert.strictEqual(timeoutRes.status, 504);
+
+    // 2. Cancellation test -> 499 Client Closed Request
+    const controller = new AbortController();
+    const cancelPromise = httpManager.execute(
+      {
+        method: 'POST',
+        url: '/slow',
+        path: '/slow',
+        headers: {},
+        body: { serviceName: 'slow', input: {} },
+        signal: controller.signal,
+      },
+      { timeoutMs: 5000 },
+    );
+    controller.abort();
+    const cancelRes = await cancelPromise;
+    assert.strictEqual(cancelRes.status, 499);
+
+    await httpManager.stop();
+    await app.stop();
+  });
+
+  await t.test('21. Graceful Shutdown Draining with active requests', async () => {
+    const app = ApplicationIntegrationBuilder.create().build();
+    app.applicationManager.register('drain-test', {
+      async execute(_input: unknown) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return { drained: true };
+      },
+    });
+    await app.start();
+
+    const httpManager = HttpTransportBuilder.create()
+      .withApplication(app)
+      .withDefaultTimeout(5000)
+      .withAutoStart(true)
+      .build();
+
+    // Fire in-flight request
+    const inFlightPromise = httpManager.execute({
+      method: 'POST',
+      url: '/drain',
+      path: '/drain',
+      headers: {},
+      body: { serviceName: 'drain-test', input: {} },
+    });
+
+    // Trigger stop immediately
+    const stopPromise = httpManager.stop(2000);
+
+    const [response] = await Promise.all([inFlightPromise, stopPromise]);
+
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual((response.body as { drained: boolean }).drained, true);
+    assert.strictEqual(httpManager.state, 'STOPPED');
+
+    await app.stop();
+  });
+
+  // =========================================================================
+  // 7. ARCHITECTURAL BOUNDARY (Stage 1)
+  // =========================================================================
+  await t.test('22. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 

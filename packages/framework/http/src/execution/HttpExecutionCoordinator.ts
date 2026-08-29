@@ -110,7 +110,27 @@ export class HttpExecutionCoordinator {
         timeoutMs,
       });
 
-      // 6. Map TransportResponse to HttpResponse
+      // 6. Check In-flight Cancellation
+      if (context.executionContext.signal.aborted) {
+        const durationMs = profiler.stop();
+        const cancelErr = new HttpCancellationError('HTTP request was cancelled during execution');
+        this._diagnostics.recordRequestFailure(durationMs, true);
+        this._diagnostics.recordResponseMapping();
+
+        const cancelStatus =
+          this._errorMappingOptions.cancellationStatus ?? HTTP_STATUS_CODES.CLIENT_CLOSED_REQUEST;
+
+        return HttpResponseFactory.createFailure<TRes>(
+          cancelStatus,
+          cancelErr,
+          {},
+          undefined,
+          undefined,
+          this._errorMappingOptions,
+        );
+      }
+
+      // 7. Map TransportResponse to HttpResponse
       const transportResponse =
         transportResult.response ??
         TransportResponseFactory.createFailure(
