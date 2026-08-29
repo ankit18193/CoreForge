@@ -16,23 +16,28 @@ import {
   HttpResponseOptions,
 } from '@coreforge/contracts';
 import { CoreForgeError } from '@coreforge/errors';
+import { ExecutionContextManager } from '@coreforge/execution-context';
 import { TransportError, TransportResponseFactory } from '@coreforge/transport';
 
 import {
   HTTP_STATUS_CODES,
   HttpCancellationError,
   HttpConfigurationError,
+  HttpContextFactory,
   HttpError,
   HttpExecutionError,
   HttpMappingError,
   HttpRequestError,
+  HttpRequestMapper,
+  HttpRequestSnapshot,
+  HttpRequestValidator,
   HttpResponseError,
   HttpStateError,
   HttpTimeoutError,
   HttpValidationError,
 } from '../src/index';
 
-test('CoreForge HTTP Transport Adapter & Request Execution Engine (@coreforge/http) - Stage 1', async (t) => {
+test('CoreForge HTTP Transport Adapter & Request Execution Engine (@coreforge/http)', async (t) => {
   // =========================================================================
   // 1. CONTRACTS & TYPES (Stage 1)
   // =========================================================================
@@ -177,9 +182,197 @@ test('CoreForge HTTP Transport Adapter & Request Execution Engine (@coreforge/ht
   );
 
   // =========================================================================
-  // 3. ARCHITECTURAL BOUNDARY (Stage 1)
+  // 3. REQUEST VALIDATION & SNAPSHOTTING (Stage 2)
   // =========================================================================
-  await t.test('3. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
+  await t.test('3. HttpRequestValidator: Validates structure and rejects invalid inputs', () => {
+    assert.throws(
+      () => HttpRequestValidator.validate(null),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate(undefined),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate('GET /api'),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate({ method: 'INVALID', url: '/api' }),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate({ method: 'GET', url: '' }),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate({ method: 'GET', url: '/api', headers: 'bad' }),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate({ method: 'GET', url: '/api', query: [1, 2] }),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate({ method: 'GET', url: '/api', pathParameters: 123 }),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+    assert.throws(
+      () => HttpRequestValidator.validate({ method: 'GET', url: '/api', signal: 'bad' }),
+      (err: Error) => err instanceof HttpValidationError,
+    );
+
+    const valid = HttpRequestValidator.validate({
+      method: 'get',
+      url: 'https://example.com/v1/users?active=true',
+    });
+    assert.strictEqual(valid.method, 'GET');
+    assert.strictEqual(valid.path, '/v1/users');
+  });
+
+  await t.test(
+    '4. HttpRequestSnapshot: Normalizes header names while strictly preserving header value casing',
+    () => {
+      const rawRequest = {
+        method: 'POST',
+        url: '/api/v1/auth',
+        headers: {
+          'Content-Type': 'application/JSON; charset=UTF-8',
+          Authorization: 'Bearer SecretToken123ABC',
+          'X-Custom-Header': 'MixedCaseValue',
+          'X-Array-Header': ['ValueAlpha', 'ValueBeta'],
+        },
+      };
+
+      const snapshot = HttpRequestSnapshot.create(rawRequest);
+
+      // Header names are deterministically lowercased
+      assert.ok('content-type' in snapshot.headers);
+      assert.ok('authorization' in snapshot.headers);
+      assert.ok('x-custom-header' in snapshot.headers);
+      assert.ok('x-array-header' in snapshot.headers);
+
+      // Header values preserve their exact casing
+      assert.strictEqual(snapshot.headers['content-type'], 'application/JSON; charset=UTF-8');
+      assert.strictEqual(snapshot.headers['authorization'], 'Bearer SecretToken123ABC');
+      assert.strictEqual(snapshot.headers['x-custom-header'], 'MixedCaseValue');
+      assert.deepStrictEqual(snapshot.headers['x-array-header'], ['ValueAlpha', 'ValueBeta']);
+    },
+  );
+
+  await t.test('5. HttpRequestSnapshot: Deep cloning and producer mutation isolation', () => {
+    const rawBody = { user: { name: 'Alice', roles: ['admin', 'user'] } };
+    const rawHeaders = { 'X-Trace-ID': 'tr-101' };
+    const rawQuery = { filter: 'active' };
+
+    const snapshot = HttpRequestSnapshot.create<{
+      user: { name: string; roles: string[] };
+    }>({
+      method: 'PUT',
+      url: '/users/1?filter=active',
+      headers: rawHeaders,
+      query: rawQuery,
+      body: rawBody,
+    });
+
+    // Producer mutates original objects
+    rawBody.user.name = 'MutatedBob';
+    rawBody.user.roles.push('superadmin');
+    rawHeaders['X-Trace-ID'] = 'tr-mutated';
+    rawQuery.filter = 'inactive';
+
+    // Snapshot is completely isolated
+    assert.strictEqual(snapshot.body?.user.name, 'Alice');
+    assert.deepStrictEqual(snapshot.body?.user.roles, ['admin', 'user']);
+    assert.strictEqual(snapshot.headers['x-trace-id'], 'tr-101');
+    assert.strictEqual(snapshot.query?.filter, 'active');
+  });
+
+  await t.test(
+    '6. HttpRequestSnapshot: Circular reference detection and deep freeze immutability',
+    () => {
+      const cyclicBody: { name: string; self?: unknown } = { name: 'cyclic_req' };
+      cyclicBody.self = cyclicBody;
+
+      const snapshot = HttpRequestSnapshot.create<{ name: string; self: unknown }>({
+        method: 'POST',
+        url: '/data',
+        body: cyclicBody,
+      });
+
+      assert.strictEqual(snapshot.body?.name, 'cyclic_req');
+      assert.strictEqual(snapshot.body?.self, '[Circular]');
+
+      // Snapshot is deeply frozen
+      assert.throws(() => {
+        (snapshot as { method: string }).method = 'DELETE';
+      });
+      assert.throws(() => {
+        (snapshot.body as { name: string }).name = 'mutated';
+      });
+    },
+  );
+
+  await t.test('7. HttpRequestMapper: Maps HttpRequest to generic TransportRequest', () => {
+    const httpReq: HttpRequest<{ amount: number }> = {
+      method: 'POST',
+      url: '/payments?currency=USD',
+      path: '/payments',
+      headers: { 'Content-Type': 'application/json' },
+      query: { currency: 'USD' },
+      body: { amount: 500 },
+      cookies: { session_id: 'sess-999' },
+    };
+
+    const transportReq = HttpRequestMapper.toTransportRequest<{ amount: number }>(httpReq);
+
+    assert.deepStrictEqual(transportReq.payload, { amount: 500 });
+    assert.strictEqual(transportReq.metadata.transportType, 'http');
+    assert.strictEqual(transportReq.metadata.method, 'POST');
+    assert.strictEqual(transportReq.metadata.url, '/payments?currency=USD');
+    assert.strictEqual(transportReq.metadata.path, '/payments');
+    assert.strictEqual(
+      (transportReq.metadata.headers as HttpHeaders)['content-type'],
+      'application/json',
+    );
+    assert.strictEqual(
+      (transportReq.metadata.cookies as Record<string, string>).session_id,
+      'sess-999',
+    );
+    assert.ok(Object.isFrozen(transportReq));
+  });
+
+  await t.test(
+    '8. HttpContextFactory: Bridges HttpRequest to TransportContext and propagates AbortSignal',
+    () => {
+      const contextManager = new ExecutionContextManager();
+      const controller = new AbortController();
+
+      const httpReq: HttpRequest = {
+        method: 'GET',
+        url: '/stream',
+        path: '/stream',
+        headers: {},
+        signal: controller.signal,
+      };
+
+      const transportCtx = HttpContextFactory.create(httpReq, { contextManager });
+
+      assert.strictEqual(transportCtx.transportType, 'http');
+      assert.strictEqual(transportCtx.executionContext.state, 'ACTIVE');
+      assert.strictEqual(transportCtx.executionContext.signal.aborted, false);
+
+      // Trigger AbortSignal on HttpRequest
+      controller.abort();
+
+      assert.strictEqual(transportCtx.executionContext.signal.aborted, true);
+    },
+  );
+
+  // =========================================================================
+  // 4. ARCHITECTURAL BOUNDARY (Stage 1)
+  // =========================================================================
+  await t.test('9. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
