@@ -3,13 +3,16 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "."
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "tests/**/*", "index.ts"],
   "references": [
     { "path": "../../foundation/types" },
     { "path": "../../foundation/contracts" },
     { "path": "../../foundation/errors" },
-    { "path": "../container" }
+    { "path": "../../foundation/utils" },
+    { "path": "../execution-context" },
+    { "path": "../integration" },
+    { "path": "../transport" }
   ]
 }

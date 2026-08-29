@@ -51,40 +51,6 @@ export interface Bootstrap {
   stop(): Promise<void>;
 }
 
-export interface HttpServer {
-  start(): Promise<void>;
-  stop(): Promise<void>;
-}
-
-export interface HttpRequest {
-  readonly method: string;
-  readonly url: string;
-  readonly path: string;
-  readonly query: Readonly<Record<string, unknown>>;
-  readonly headers: Readonly<Record<string, unknown>>;
-  readonly cookies: Readonly<Record<string, unknown>>;
-  readonly body: unknown;
-  readonly parameters: Readonly<Record<string, unknown>>;
-  readonly remoteAddress: string;
-  readonly protocol: string;
-  readonly requestId: string;
-}
-
-export interface HttpResponse {
-  readonly status: number;
-  readonly headers: Readonly<Record<string, unknown>>;
-  readonly cookies: Readonly<Record<string, unknown>>;
-  readonly body: unknown;
-  readonly contentType?: string | undefined;
-}
-
-export interface HttpAdapter {
-  readonly name: string;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  setHandler(handler: (request: HttpRequest) => Promise<HttpResponse>): void;
-}
-
 export enum RouteMethod {
   GET = 'GET',
   POST = 'POST',
@@ -2172,4 +2138,72 @@ export interface TransportManager {
   readonly ready: boolean;
   getDiagnostics(): TransportDiagnosticsSnapshot;
   resetDiagnostics(): void;
+}
+
+// =========================================================================
+// Phase 8.2: HTTP Transport Adapter & Request Execution Engine Contracts
+// =========================================================================
+
+export type HttpHeaders = Record<string, string | readonly string[] | unknown>;
+
+export type HttpQuery = Record<string, string | readonly string[] | unknown | undefined>;
+
+export type HttpPathParameters = Record<string, string | unknown>;
+
+export interface HttpRequest<TBody = unknown> {
+  readonly method: HttpMethod | string;
+  readonly url: string;
+  readonly path: string;
+  readonly headers: HttpHeaders;
+  readonly query?: HttpQuery | undefined;
+  readonly pathParameters?: HttpPathParameters | undefined;
+  readonly parameters?: Readonly<Record<string, unknown>> | undefined;
+  readonly cookies?: Record<string, string> | Readonly<Record<string, unknown>> | undefined;
+  readonly body?: TBody | undefined;
+  readonly metadata?: Record<string, unknown> | undefined;
+  readonly signal?: AbortSignal | undefined;
+  readonly remoteAddress?: string | undefined;
+  readonly protocol?: string | undefined;
+  readonly requestId?: string | undefined;
+}
+
+export interface HttpResponse<TBody = unknown> {
+  readonly status: number;
+  readonly headers: HttpHeaders;
+  readonly body?: TBody | undefined;
+  readonly cookies?: Record<string, string> | Readonly<Record<string, unknown>> | undefined;
+  readonly metadata?: Record<string, unknown> | undefined;
+  readonly contentType?: string | undefined;
+}
+
+export interface HttpRequestOptions {
+  readonly timeoutMs?: number | undefined;
+  readonly context?: ExecutionContext | undefined;
+  readonly metadata?: Record<string, unknown> | undefined;
+}
+
+export interface HttpResponseOptions {
+  readonly defaultStatus?: number | undefined;
+  readonly includeErrorDetails?: boolean | undefined;
+  readonly cancellationStatus?: number | undefined;
+}
+
+export interface HttpAdapter<TBodyReq = unknown, TBodyRes = unknown> extends TransportAdapter<
+  HttpRequest<TBodyReq>,
+  HttpResponse<TBodyRes>
+> {
+  readonly defaultOptions?: HttpRequestOptions | undefined;
+}
+
+export interface HttpDiagnosticsSnapshot {
+  readonly totalRequests: number;
+  readonly successfulRequests: number;
+  readonly failedRequests: number;
+  readonly cancelledRequests: number;
+  readonly activeRequests: number;
+  readonly validationFailures: number;
+  readonly mappingFailures: number;
+  readonly responseMappings: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
 }

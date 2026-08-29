@@ -2,7 +2,7 @@
   "name": "@coreforge/http",
   "version": "0.1.0",
   "private": true,
-  "description": "HTTP Server Abstraction for CoreForge",
+  "description": "HTTP Transport Adapter & Request Execution Engine for CoreForge",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,9 +10,12 @@
     "clean": "tsc -b --clean"
   },
   "dependencies": {
-    "@coreforge/types": "*",
     "@coreforge/contracts": "*",
     "@coreforge/errors": "*",
-    "@coreforge/container": "*"
+    "@coreforge/execution-context": "*",
+    "@coreforge/integration": "*",
+    "@coreforge/transport": "*",
+    "@coreforge/types": "*",
+    "@coreforge/utils": "*"
   }
 }
