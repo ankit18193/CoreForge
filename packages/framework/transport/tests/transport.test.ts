@@ -5,6 +5,7 @@ import { test } from 'node:test';
 
 import { CoreForgeError } from '@coreforge/errors';
 import { ExecutionContextManager } from '@coreforge/execution-context';
+import { ApplicationIntegration } from '@coreforge/integration';
 
 import {
   TransportAdapter,
@@ -12,6 +13,7 @@ import {
   TransportAdapterOptions,
   TransportAdapterRegistry,
   TransportAdapterResolver,
+  TransportBuilder,
   TransportCancellationError,
   TransportCapability,
   TransportConfigurationError,
@@ -21,6 +23,7 @@ import {
   TransportError,
   TransportExecutionError,
   TransportExecutionOptions,
+  TransportManager,
   TransportMetadata,
   TransportRegistrationError,
   TransportRequest,
@@ -570,10 +573,199 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
   );
 
   // =========================================================================
-  // 6. ARCHITECTURAL BOUNDARY
+  // 6. LIFECYCLE & EXECUTION COORDINATION (Stage 4)
   // =========================================================================
   await t.test(
-    '15. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
+    '15. TransportManager: Lifecycle transitions and idempotent start/stop',
+    async () => {
+      const manager = new TransportManager();
+      assert.strictEqual(manager.state, 'CREATED');
+      assert.strictEqual(manager.ready, false);
+
+      await manager.start();
+      assert.strictEqual(manager.state, 'READY');
+      assert.strictEqual(manager.ready, true);
+
+      // Idempotent start
+      await manager.start();
+      assert.strictEqual(manager.state, 'READY');
+
+      await manager.stop();
+      assert.strictEqual(manager.state, 'STOPPED');
+      assert.strictEqual(manager.ready, false);
+
+      // Idempotent stop
+      await manager.stop();
+      assert.strictEqual(manager.state, 'STOPPED');
+    },
+  );
+
+  await t.test('16. TransportManager: Rejects operations when not in READY state', async () => {
+    const manager = new TransportManager();
+
+    await assert.rejects(
+      async () => manager.execute({ payload: { ping: true }, metadata: {} }),
+      (err: Error) => err instanceof TransportStateError,
+    );
+
+    await manager.start();
+    await manager.stop();
+
+    await assert.rejects(
+      async () => manager.execute({ payload: { ping: true }, metadata: {} }),
+      (err: Error) => err instanceof TransportStateError,
+    );
+  });
+
+  await t.test('17. TransportExecutionCoordinator: Adapter handle execution path', async () => {
+    const manager = new TransportManager();
+
+    manager.registerAdapter<{ num: number }, { squared: number }>({
+      id: 'math-adapter',
+      name: 'Math Adapter',
+      capabilities: ['REQUEST', 'RESPONSE'],
+      async handle(request) {
+        return TransportResponseFactory.createSuccess({
+          squared: request.payload.num * request.payload.num,
+        });
+      },
+    });
+
+    await manager.start();
+
+    const result = await manager.execute<{ num: number }, { squared: number }>({
+      payload: { num: 9 },
+      metadata: {},
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.response?.body?.squared, 81);
+    assert.strictEqual(typeof result.durationMs, 'number');
+
+    await manager.stop();
+  });
+
+  await t.test(
+    '18. TransportExecutionCoordinator: ApplicationIntegration delegation path',
+    async () => {
+      const app = new ApplicationIntegration();
+
+      app.dispatcher.register<{ amount: number }, { confirmed: boolean }>('CreatePayment', {
+        async execute(payload) {
+          return { confirmed: payload.amount > 0 };
+        },
+      });
+
+      await app.start();
+
+      const transport = new TransportManager({ application: app });
+      await transport.start();
+
+      const res = await transport.execute<
+        { type: string; payload: { amount: number } },
+        { confirmed: boolean }
+      >({
+        payload: { type: 'CreatePayment', payload: { amount: 150 } },
+        metadata: {},
+      });
+
+      assert.strictEqual(res.success, true);
+      assert.strictEqual(res.response?.body?.confirmed, true);
+
+      await transport.stop();
+      await app.stop();
+    },
+  );
+
+  await t.test('19. TransportExecutionCoordinator: Cancellation and timeout handling', async () => {
+    const manager = new TransportManager({ defaultTimeoutMs: 50 });
+
+    manager.registerAdapter({
+      id: 'slow-adapter',
+      name: 'Slow Adapter',
+      capabilities: ['REQUEST'],
+      async handle() {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return TransportResponseFactory.createSuccess({ done: true });
+      },
+    });
+
+    await manager.start();
+
+    // 1. Timeout trigger
+    const timeoutResult = await manager.execute({ payload: {}, metadata: {} });
+    assert.strictEqual(timeoutResult.success, false);
+    assert.ok(timeoutResult.error instanceof TransportTimeoutError);
+
+    // 2. Cancellation trigger
+    const ctx = manager.contextManager.create();
+    ctx.cancel();
+
+    const cancelResult = await manager.execute({ payload: {}, metadata: {} }, { context: ctx });
+    assert.strictEqual(cancelResult.success, false);
+    assert.ok(cancelResult.error instanceof TransportCancellationError);
+
+    await manager.stop();
+  });
+
+  await t.test('20. TransportDiagnostics: Pure numerical metrics and reset', async () => {
+    const manager = new TransportManager();
+
+    manager.registerAdapter({
+      id: 'echo',
+      name: 'Echo Adapter',
+      capabilities: ['REQUEST'],
+      handle(req) {
+        return TransportResponseFactory.createSuccess(req.payload);
+      },
+    });
+
+    await manager.start();
+
+    await manager.execute({ payload: { a: 1 }, metadata: {} });
+    await manager.execute({ payload: { b: 2 }, metadata: {} });
+
+    const diag = manager.getDiagnostics();
+    assert.strictEqual(diag.adapterRegistrations, 1);
+    assert.strictEqual(diag.totalRequests, 2);
+    assert.strictEqual(diag.successfulRequests, 2);
+    assert.strictEqual(diag.failedRequests, 0);
+    assert.strictEqual(diag.activeRequests, 0);
+    assert.strictEqual(typeof diag.averageDurationMs, 'number');
+
+    manager.resetDiagnostics();
+    const resetDiag = manager.getDiagnostics();
+    assert.strictEqual(resetDiag.totalRequests, 0);
+    assert.strictEqual(resetDiag.successfulRequests, 0);
+
+    await manager.stop();
+  });
+
+  await t.test('21. TransportBuilder: Fluent immutable construction', async () => {
+    const b1 = TransportBuilder.create();
+    const b2 = b1.withDefaultTimeout(1000);
+    const b3 = b2.registerAdapter({
+      id: 'b-adapter',
+      name: 'Builder Adapter',
+      capabilities: ['REQUEST'],
+    });
+
+    assert.notStrictEqual(b1, b2);
+    assert.notStrictEqual(b2, b3);
+
+    const m1 = b1.build();
+    const m3 = b3.build();
+
+    assert.strictEqual(m1.registry.size, 0);
+    assert.strictEqual(m3.registry.size, 1);
+    assert.strictEqual(m3.registry.has('b-adapter'), true);
+  });
+
+  // =========================================================================
+  // 7. ARCHITECTURAL BOUNDARY
+  // =========================================================================
+  await t.test(
+    '22. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
     () => {
       const pkgJsonPath = path.resolve(__dirname, '../../package.json');
       const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));

@@ -18,3 +18,20 @@ export * from './context/TransportContextFactory';
 // Registry
 export * from './registry/TransportAdapterRegistry';
 export * from './registry/TransportAdapterResolver';
+
+// Lifecycle
+export * from './lifecycle/TransportState';
+export * from './lifecycle/TransportLifecycleManager';
+
+// Internal
+export * from './internal/TransportProfiler';
+
+// Diagnostics
+export * from './diagnostics/TransportDiagnostics';
+
+// Execution
+export * from './execution/TransportExecutionCoordinator';
+
+// Manager & Builder
+export * from './manager/TransportManager';
+export * from './manager/TransportBuilder';
