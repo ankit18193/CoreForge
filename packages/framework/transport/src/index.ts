@@ -14,3 +14,7 @@ export * from './response/TransportResponseFactory';
 
 // Context
 export * from './context/TransportContextFactory';
+
+// Registry
+export * from './registry/TransportAdapterRegistry';
+export * from './registry/TransportAdapterResolver';

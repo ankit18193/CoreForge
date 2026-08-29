@@ -10,6 +10,8 @@ import {
   TransportAdapter,
   TransportAdapterNotFoundError,
   TransportAdapterOptions,
+  TransportAdapterRegistry,
+  TransportAdapterResolver,
   TransportCancellationError,
   TransportCapability,
   TransportConfigurationError,
@@ -366,10 +368,212 @@ test('CoreForge Transport Contracts & Adapter Abstraction (@coreforge/transport)
   });
 
   // =========================================================================
-  // 5. ARCHITECTURAL BOUNDARY
+  // 5. ADAPTER REGISTRY & RESOLUTION (Stage 3)
   // =========================================================================
   await t.test(
-    '9. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
+    '9. TransportAdapterRegistry: Registers adapters and maintains immutable list',
+    () => {
+      const registry = new TransportAdapterRegistry();
+      assert.strictEqual(registry.size, 0);
+
+      const httpAdapter: TransportAdapter = {
+        id: 'http',
+        name: 'HTTP Adapter',
+        priority: 50,
+        capabilities: ['REQUEST', 'RESPONSE'],
+      };
+
+      registry.register(httpAdapter);
+      assert.strictEqual(registry.size, 1);
+      assert.strictEqual(registry.has('http'), true);
+
+      const entry = registry.get('http');
+      assert.ok(entry);
+      assert.strictEqual(entry?.id, 'http');
+      assert.strictEqual(entry?.name, 'HTTP Adapter');
+      assert.strictEqual(entry?.priority, 50);
+      assert.deepStrictEqual(entry?.capabilities, ['REQUEST', 'RESPONSE']);
+      assert.strictEqual(entry?.sequence, 1);
+
+      const list = registry.list();
+      assert.strictEqual(list.length, 1);
+      assert.throws(() => {
+        (list as unknown as unknown[]).push({});
+      });
+    },
+  );
+
+  await t.test(
+    '10. TransportAdapterRegistry: Rejects duplicate adapter IDs with TransportRegistrationError',
+    () => {
+      const registry = new TransportAdapterRegistry();
+
+      registry.register({
+        id: 'duplicate-id',
+        name: 'First Adapter',
+        capabilities: ['REQUEST'],
+      });
+
+      assert.throws(
+        () =>
+          registry.register({
+            id: 'duplicate-id',
+            name: 'Second Adapter',
+            capabilities: ['RESPONSE'],
+          }),
+        (err: Error) => err instanceof TransportRegistrationError,
+      );
+    },
+  );
+
+  await t.test(
+    '11. TransportAdapterRegistry: Rejects registrations after lock() with TransportStateError',
+    () => {
+      const registry = new TransportAdapterRegistry();
+
+      registry.register({
+        id: 'pre-lock',
+        name: 'Pre-lock Adapter',
+        capabilities: ['REQUEST'],
+      });
+
+      registry.lock();
+      assert.strictEqual(registry.isLocked, true);
+
+      assert.throws(
+        () =>
+          registry.register({
+            id: 'post-lock',
+            name: 'Post-lock Adapter',
+            capabilities: ['REQUEST'],
+          }),
+        (err: Error) => err instanceof TransportStateError,
+      );
+
+      assert.throws(
+        () => registry.clear(),
+        (err: Error) => err instanceof TransportStateError,
+      );
+    },
+  );
+
+  await t.test(
+    '12. TransportAdapterResolver: Resolves by ID with O(1) lookup or throws TransportAdapterNotFoundError',
+    () => {
+      const registry = new TransportAdapterRegistry();
+
+      const wsAdapter: TransportAdapter = {
+        id: 'websocket',
+        name: 'WebSocket Adapter',
+        capabilities: ['BIDIRECTIONAL', 'STREAMING'],
+      };
+
+      registry.register(wsAdapter);
+
+      const resolved = TransportAdapterResolver.resolve(registry, 'websocket');
+      assert.strictEqual(resolved.id, 'websocket');
+      assert.strictEqual(resolved.name, 'WebSocket Adapter');
+
+      assert.throws(
+        () => TransportAdapterResolver.resolve(registry, 'non-existent'),
+        (err: Error) => err instanceof TransportAdapterNotFoundError,
+      );
+      assert.throws(
+        () => TransportAdapterResolver.resolve(registry, ''),
+        (err: Error) => err instanceof TransportAdapterNotFoundError,
+      );
+    },
+  );
+
+  await t.test(
+    '13. TransportAdapterResolver: Deterministic priority DESC and sequence ASC resolution',
+    () => {
+      const registry = new TransportAdapterRegistry();
+
+      const a1: TransportAdapter = {
+        id: 'a1',
+        name: 'A1',
+        priority: 10,
+        capabilities: ['REQUEST'],
+      };
+      const a2: TransportAdapter = {
+        id: 'a2',
+        name: 'A2',
+        priority: 100,
+        capabilities: ['REQUEST'],
+      };
+      const a3: TransportAdapter = {
+        id: 'a3',
+        name: 'A3',
+        priority: 50,
+        capabilities: ['REQUEST'],
+      };
+      const a4: TransportAdapter = {
+        id: 'a4',
+        name: 'A4',
+        priority: 100,
+        capabilities: ['REQUEST'],
+      }; // same priority as a2, later sequence
+
+      registry.register(a1); // priority 10, seq 1
+      registry.register(a2); // priority 100, seq 2
+      registry.register(a3); // priority 50, seq 3
+      registry.register(a4); // priority 100, seq 4
+
+      const allSorted = TransportAdapterResolver.resolveAll(registry);
+      assert.strictEqual(allSorted.length, 4);
+      assert.strictEqual(allSorted[0].id, 'a2'); // Priority 100, Seq 2
+      assert.strictEqual(allSorted[1].id, 'a4'); // Priority 100, Seq 4
+      assert.strictEqual(allSorted[2].id, 'a3'); // Priority 50, Seq 3
+      assert.strictEqual(allSorted[3].id, 'a1'); // Priority 10, Seq 1
+
+      const defaultAdapter = TransportAdapterResolver.resolveDefault(registry);
+      assert.strictEqual(defaultAdapter?.id, 'a2');
+    },
+  );
+
+  await t.test(
+    '14. TransportAdapterResolver: Capability filtering with deterministic ordering',
+    () => {
+      const registry = new TransportAdapterRegistry();
+
+      registry.register({
+        id: 'c1',
+        name: 'C1',
+        priority: 10,
+        capabilities: ['STREAMING', 'REQUEST'],
+      });
+      registry.register({
+        id: 'c2',
+        name: 'C2',
+        priority: 90,
+        capabilities: ['RESPONSE'],
+      });
+      registry.register({
+        id: 'c3',
+        name: 'C3',
+        priority: 80,
+        capabilities: ['STREAMING', 'RESPONSE'],
+      });
+
+      const streamingAdapters = TransportAdapterResolver.resolveByCapability(registry, 'STREAMING');
+      assert.strictEqual(streamingAdapters.length, 2);
+      assert.strictEqual(streamingAdapters[0].id, 'c3'); // Priority 80
+      assert.strictEqual(streamingAdapters[1].id, 'c1'); // Priority 10
+
+      const bidirectionalAdapters = TransportAdapterResolver.resolveByCapability(
+        registry,
+        'BIDIRECTIONAL',
+      );
+      assert.strictEqual(bidirectionalAdapters.length, 0);
+    },
+  );
+
+  // =========================================================================
+  // 6. ARCHITECTURAL BOUNDARY
+  // =========================================================================
+  await t.test(
+    '15. Architectural boundary: Zero forbidden dependencies in @coreforge/transport',
     () => {
       const pkgJsonPath = path.resolve(__dirname, '../../package.json');
       const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
