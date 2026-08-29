@@ -17,7 +17,13 @@ import {
 } from '@coreforge/contracts';
 import { CoreForgeError } from '@coreforge/errors';
 import { ExecutionContextManager } from '@coreforge/execution-context';
-import { TransportError, TransportResponseFactory } from '@coreforge/transport';
+import {
+  TransportCancellationError,
+  TransportError,
+  TransportResponseFactory,
+  TransportTimeoutError,
+  TransportValidationError,
+} from '@coreforge/transport';
 
 import {
   HTTP_STATUS_CODES,
@@ -25,6 +31,7 @@ import {
   HttpConfigurationError,
   HttpContextFactory,
   HttpError,
+  HttpErrorMapper,
   HttpExecutionError,
   HttpMappingError,
   HttpRequestError,
@@ -32,6 +39,8 @@ import {
   HttpRequestSnapshot,
   HttpRequestValidator,
   HttpResponseError,
+  HttpResponseFactory,
+  HttpResponseMapper,
   HttpStateError,
   HttpTimeoutError,
   HttpValidationError,
@@ -370,9 +379,170 @@ test('CoreForge HTTP Transport Adapter & Request Execution Engine (@coreforge/ht
   );
 
   // =========================================================================
-  // 4. ARCHITECTURAL BOUNDARY (Stage 1)
+  // 4. RESPONSE & ERROR MAPPING (Stage 3)
   // =========================================================================
-  await t.test('9. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
+  await t.test(
+    '9. HttpResponseFactory: Creates success and failure responses with status inference',
+    () => {
+      // 200 with body
+      const resWithBody = HttpResponseFactory.createSuccess(undefined, { items: [1, 2, 3] });
+      assert.strictEqual(resWithBody.status, 200);
+      assert.deepStrictEqual(resWithBody.body, { items: [1, 2, 3] });
+
+      // 204 with no body
+      const resNoBody = HttpResponseFactory.createSuccess(undefined, undefined);
+      assert.strictEqual(resNoBody.status, 204);
+      assert.strictEqual(resNoBody.body, undefined);
+
+      // Explicit status override (e.g. 201 Created)
+      const resCreated = HttpResponseFactory.createSuccess(201, { id: 'ord-1' });
+      assert.strictEqual(resCreated.status, 201);
+
+      // Failure response
+      const resFailure = HttpResponseFactory.createFailure(
+        400,
+        new HttpValidationError('Bad input'),
+      );
+      assert.strictEqual(resFailure.status, 400);
+      assert.strictEqual(resFailure.headers['content-type'], 'application/json');
+      assert.strictEqual(
+        (resFailure.body as unknown as { error: { code: string } }).error.code,
+        'CF-HTTP-VALIDATION',
+      );
+    },
+  );
+
+  await t.test(
+    '10. HttpErrorMapper: Maps error categories to standard and configurable status codes',
+    () => {
+      // Validation -> 400
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new HttpValidationError('Invalid input')),
+        400,
+      );
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new TransportValidationError('Invalid payload')),
+        400,
+      );
+
+      // Authentication -> 401
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new CoreForgeError('Unauthorized', 'UNAUTHORIZED_ACCESS')),
+        401,
+      );
+
+      // Authorization -> 403
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new CoreForgeError('Forbidden', 'FORBIDDEN_RESOURCE')),
+        403,
+      );
+
+      // Not Found -> 404
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new CoreForgeError('Not found', 'NOT_FOUND')),
+        404,
+      );
+
+      // Conflict -> 409
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new CoreForgeError('Conflict', 'CONFLICT_DETECTED')),
+        409,
+      );
+
+      // Rate Limit -> 429
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new CoreForgeError('Rate limited', 'RATE_LIMIT_EXCEEDED')),
+        429,
+      );
+
+      // Timeout -> 504
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new TransportTimeoutError('Operation timed out')),
+        504,
+      );
+
+      // Cancellation: Default 499
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new TransportCancellationError('Aborted')),
+        499,
+      );
+      assert.strictEqual(HttpErrorMapper.resolveStatus(new HttpCancellationError('Aborted')), 499);
+
+      // Cancellation: Configurable (e.g. 408)
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new TransportCancellationError('Aborted'), {
+          cancellationStatus: 408,
+        }),
+        408,
+      );
+
+      // Custom status mapping
+      assert.strictEqual(
+        HttpErrorMapper.resolveStatus(new CoreForgeError('Custom', 'CUSTOM_PAYMENT_ERROR'), {
+          customStatusMap: { CUSTOM_PAYMENT_ERROR: 402 },
+        }),
+        402,
+      );
+    },
+  );
+
+  await t.test(
+    '11. HttpErrorMapper: Sanitizes sensitive credentials and secret tokens from error payloads',
+    () => {
+      const sensitiveErr = new HttpError(
+        'Failed query with Bearer secret-token-xyz and password=supersecret at postgres://user:pass@localhost:5432/db',
+      );
+
+      const errorPayload = HttpErrorMapper.toErrorPayload(sensitiveErr);
+      assert.strictEqual(
+        errorPayload.error.message.includes('secret-token-xyz'),
+        false,
+        'Token must be sanitized',
+      );
+      assert.strictEqual(
+        errorPayload.error.message.includes('supersecret'),
+        false,
+        'Password must be sanitized',
+      );
+      assert.strictEqual(
+        errorPayload.error.message.includes('postgres://user:pass'),
+        false,
+        'DB URI must be sanitized',
+      );
+      assert.strictEqual(errorPayload.error.code, 'CF-HTTP');
+    },
+  );
+
+  await t.test(
+    '12. HttpResponseMapper: Maps TransportResponse to HttpResponse with immutability',
+    () => {
+      const successTransport = TransportResponseFactory.createSuccess<{ orderId: string }>({
+        orderId: 'ord-888',
+      });
+      const httpSuccess = HttpResponseMapper.toHttpResponse(successTransport);
+
+      assert.strictEqual(httpSuccess.status, 200);
+      assert.strictEqual((httpSuccess.body as { orderId: string }).orderId, 'ord-888');
+      assert.ok(Object.isFrozen(httpSuccess));
+
+      const failureTransport = TransportResponseFactory.createFailure(
+        new HttpValidationError('Invalid email'),
+      );
+      const httpFailure = HttpResponseMapper.toHttpResponse(failureTransport);
+
+      assert.strictEqual(httpFailure.status, 400);
+      assert.strictEqual(
+        (httpFailure.body as unknown as { error: { code: string } }).error.code,
+        'CF-HTTP-VALIDATION',
+      );
+      assert.ok(Object.isFrozen(httpFailure));
+    },
+  );
+
+  // =========================================================================
+  // 5. ARCHITECTURAL BOUNDARY (Stage 1)
+  // =========================================================================
+  await t.test('13. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
