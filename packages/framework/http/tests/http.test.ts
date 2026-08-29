@@ -17,7 +17,10 @@ import {
 } from '@coreforge/contracts';
 import { CoreForgeError } from '@coreforge/errors';
 import { ExecutionContextManager } from '@coreforge/execution-context';
+import { ApplicationIntegrationBuilder } from '@coreforge/integration';
 import {
+  TransportAdapterRegistry,
+  TransportAdapterResolver,
   TransportCancellationError,
   TransportError,
   TransportResponseFactory,
@@ -30,9 +33,11 @@ import {
   HttpCancellationError,
   HttpConfigurationError,
   HttpContextFactory,
+  HttpDiagnostics,
   HttpError,
   HttpErrorMapper,
   HttpExecutionError,
+  HttpLifecycleManager,
   HttpMappingError,
   HttpRequestError,
   HttpRequestMapper,
@@ -43,7 +48,10 @@ import {
   HttpResponseMapper,
   HttpStateError,
   HttpTimeoutError,
+  HttpTransportAdapter,
+  HttpTransportBuilder,
   HttpValidationError,
+  isHttpState,
 } from '../src/index';
 
 test('CoreForge HTTP Transport Adapter & Request Execution Engine (@coreforge/http)', async (t) => {
@@ -540,9 +548,169 @@ test('CoreForge HTTP Transport Adapter & Request Execution Engine (@coreforge/ht
   );
 
   // =========================================================================
-  // 5. ARCHITECTURAL BOUNDARY (Stage 1)
+  // 5. LIFECYCLE, ADAPTER & EXECUTION COORDINATION (Stage 4)
   // =========================================================================
-  await t.test('13. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
+  await t.test(
+    '13. HttpLifecycleManager: State transitions, idempotency, and request blocking',
+    async () => {
+      const lifecycle = new HttpLifecycleManager();
+      assert.strictEqual(lifecycle.state, 'CREATED');
+      assert.strictEqual(lifecycle.isReady, false);
+      assert.strictEqual(isHttpState('CREATED'), true);
+
+      // Request blocked before start
+      assert.throws(
+        () => lifecycle.ensureReadyForExecution(),
+        (err: Error) => err instanceof HttpStateError,
+      );
+
+      // Start transitions to READY
+      lifecycle.start();
+      assert.strictEqual(lifecycle.state, 'READY');
+      assert.strictEqual(lifecycle.isReady, true);
+
+      // Idempotent start
+      lifecycle.start();
+      assert.strictEqual(lifecycle.state, 'READY');
+
+      // Acquire request
+      lifecycle.acquireRequest();
+      assert.strictEqual(lifecycle.activeRequests, 1);
+      lifecycle.releaseRequest();
+      assert.strictEqual(lifecycle.activeRequests, 0);
+
+      // Stop transitions to STOPPED
+      await lifecycle.stop();
+      assert.strictEqual(lifecycle.state, 'STOPPED');
+      assert.strictEqual(lifecycle.isReady, false);
+
+      // Starting after STOPPED throws HttpStateError
+      assert.throws(
+        () => lifecycle.start(),
+        (err: Error) => err instanceof HttpStateError,
+      );
+    },
+  );
+
+  await t.test('14. HttpTransportAdapter: Contract, priority, and capabilities', () => {
+    const adapter = new HttpTransportAdapter({ id: 'custom-http', priority: 150 });
+    assert.strictEqual(adapter.id, 'custom-http');
+    assert.strictEqual(adapter.priority, 150);
+    assert.deepStrictEqual(adapter.capabilities, [
+      'REQUEST',
+      'RESPONSE',
+      'CANCELLATION',
+      'METADATA',
+    ]);
+  });
+
+  await t.test('15. HttpDiagnostics: Pure numerical metrics tracking and reset', () => {
+    const diag = new HttpDiagnostics();
+    diag.recordRequestStarted();
+    diag.recordRequestSuccess(15.5);
+    diag.recordRequestStarted();
+    diag.recordRequestFailure(25.5, false);
+    diag.recordRequestStarted();
+    diag.recordRequestFailure(10.0, true);
+    diag.recordValidationFailure();
+    diag.recordMappingFailure();
+    diag.recordResponseMapping();
+
+    const snapshot = diag.getSnapshot();
+    assert.strictEqual(snapshot.totalRequests, 3);
+    assert.strictEqual(snapshot.successfulRequests, 1);
+    assert.strictEqual(snapshot.failedRequests, 1);
+    assert.strictEqual(snapshot.cancelledRequests, 1);
+    assert.strictEqual(snapshot.validationFailures, 1);
+    assert.strictEqual(snapshot.mappingFailures, 1);
+    assert.strictEqual(snapshot.responseMappings, 1);
+    assert.strictEqual(snapshot.slowestDurationMs, 25.5);
+    assert.ok(snapshot.averageDurationMs > 0);
+    assert.ok(Object.isFrozen(snapshot));
+
+    diag.reset();
+    const resetSnapshot = diag.getSnapshot();
+    assert.strictEqual(resetSnapshot.totalRequests, 0);
+    assert.strictEqual(resetSnapshot.successfulRequests, 0);
+  });
+
+  await t.test(
+    '16. HttpExecutionCoordinator & HttpTransportManager: End-to-end execution through TransportManager',
+    async () => {
+      // Build an application integration
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('echo', {
+        async execute(input: unknown) {
+          return { echo: input };
+        },
+      });
+      await app.start();
+
+      // Build HTTP transport manager
+      const httpManager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withDefaultTimeout(5000)
+        .withAutoStart(true)
+        .build();
+
+      assert.strictEqual(httpManager.ready, true);
+      assert.strictEqual(httpManager.state, 'READY');
+
+      // Execute valid HTTP request
+      const response = await httpManager.execute<
+        { serviceName: string; input: { msg: string } },
+        { echo: { msg: string } }
+      >({
+        method: 'POST',
+        url: '/api/v1/echo',
+        path: '/api/v1/echo',
+        headers: { 'Content-Type': 'application/json' },
+        body: { serviceName: 'echo', input: { msg: 'Hello CoreForge' } },
+      });
+
+      assert.strictEqual(response.status, 200);
+      assert.deepStrictEqual(response.body, { echo: { msg: 'Hello CoreForge' } });
+
+      const diagSnapshot = httpManager.getDiagnostics();
+      assert.strictEqual(diagSnapshot.totalRequests, 1);
+      assert.strictEqual(diagSnapshot.successfulRequests, 1);
+      assert.strictEqual(diagSnapshot.failedRequests, 0);
+
+      // Stop manager
+      await httpManager.stop();
+      assert.strictEqual(httpManager.ready, false);
+      assert.strictEqual(httpManager.state, 'STOPPED');
+      await app.stop();
+    },
+  );
+
+  await t.test(
+    '17. Generic TransportAdapterRegistry: HTTP adapter registers and is resolved deterministically',
+    () => {
+      const registry = new TransportAdapterRegistry();
+      const httpAdapter = new HttpTransportAdapter({ id: 'http', priority: 100 });
+      registry.register(httpAdapter);
+
+      const resolved = TransportAdapterResolver.resolve(registry, 'http');
+      assert.strictEqual(resolved.id, 'http');
+      assert.strictEqual(resolved.priority, 100);
+
+      const resolvedByCap = TransportAdapterResolver.resolveByCapability(registry, 'REQUEST');
+      assert.strictEqual(resolvedByCap.length, 1);
+      assert.strictEqual(resolvedByCap[0].id, 'http');
+
+      // Duplicate registration rejected
+      assert.throws(
+        () => registry.register(httpAdapter),
+        (err: Error) => err instanceof TransportError,
+      );
+    },
+  );
+
+  // =========================================================================
+  // 6. ARCHITECTURAL BOUNDARY (Stage 1)
+  // =========================================================================
+  await t.test('18. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
