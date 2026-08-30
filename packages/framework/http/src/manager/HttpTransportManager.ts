@@ -2,15 +2,19 @@ import {
   HttpDiagnosticsSnapshot,
   HttpRequest,
   HttpResponse,
+  HttpRoutingDiagnosticsSnapshot,
   TransportManager as ITransportManager,
 } from '@coreforge/contracts';
 import { TransportBuilder, TransportManager } from '@coreforge/transport';
 
 import { HttpTransportAdapter } from '../adapter/HttpTransportAdapter';
 import { HttpDiagnostics } from '../diagnostics/HttpDiagnostics';
+import { HttpRoutingDiagnostics } from '../diagnostics/HttpRoutingDiagnostics';
 import { HttpExecutionCoordinator } from '../execution/HttpExecutionCoordinator';
 import { HttpLifecycleManager } from '../lifecycle/HttpLifecycleManager';
 import { HttpState } from '../lifecycle/HttpState';
+import { HttpRouter } from '../routing/HttpRouter';
+import { HttpRoutingCoordinator } from '../routing/HttpRoutingCoordinator';
 import {
   HttpErrorMappingOptions,
   HttpExecutionOptions,
@@ -20,14 +24,18 @@ import {
 export class HttpTransportManager {
   private readonly _lifecycle: HttpLifecycleManager;
   private readonly _diagnostics: HttpDiagnostics;
+  private readonly _routingDiagnostics: HttpRoutingDiagnostics;
   private readonly _transportManager: ITransportManager;
   private readonly _adapter: HttpTransportAdapter;
   private readonly _coordinator: HttpExecutionCoordinator;
+  private readonly _router?: HttpRouter | undefined;
+  private readonly _routingCoordinator?: HttpRoutingCoordinator | undefined;
   private readonly _errorMappingOptions: HttpErrorMappingOptions;
 
   constructor(options: HttpTransportOptions = {}) {
     this._lifecycle = new HttpLifecycleManager();
     this._diagnostics = new HttpDiagnostics();
+    this._routingDiagnostics = new HttpRoutingDiagnostics();
     this._errorMappingOptions = options.errorMappingOptions ?? {};
 
     this._adapter = new HttpTransportAdapter();
@@ -58,6 +66,17 @@ export class HttpTransportManager {
       this._errorMappingOptions,
     );
 
+    if (options.router instanceof HttpRouter) {
+      this._router = options.router;
+      this._routingCoordinator = new HttpRoutingCoordinator(
+        this._lifecycle,
+        this._routingDiagnostics,
+        this._router,
+        this._coordinator,
+        this._errorMappingOptions,
+      );
+    }
+
     if (options.autoStart) {
       this.startSync();
     }
@@ -77,6 +96,14 @@ export class HttpTransportManager {
 
   public get adapter(): HttpTransportAdapter {
     return this._adapter;
+  }
+
+  public get router(): HttpRouter | undefined {
+    return this._router;
+  }
+
+  public get routingCoordinator(): HttpRoutingCoordinator | undefined {
+    return this._routingCoordinator;
   }
 
   public startSync(): void {
@@ -107,11 +134,26 @@ export class HttpTransportManager {
     return this._coordinator.execute<TReq, TRes>(request, options);
   }
 
+  public async handleRoutedRequest<TReq = unknown, TRes = unknown>(
+    request: HttpRequest<TReq>,
+    options?: HttpExecutionOptions,
+  ): Promise<HttpResponse<TRes>> {
+    if (!this._routingCoordinator) {
+      return this._coordinator.execute<TReq, TRes>(request, options);
+    }
+    return this._routingCoordinator.execute<TReq, TRes>(request, options);
+  }
+
   public getDiagnostics(): HttpDiagnosticsSnapshot {
     return this._diagnostics.getSnapshot();
   }
 
+  public getRoutingDiagnostics(): HttpRoutingDiagnosticsSnapshot {
+    return this._routingDiagnostics.getSnapshot();
+  }
+
   public resetDiagnostics(): void {
     this._diagnostics.reset();
+    this._routingDiagnostics.reset();
   }
 }

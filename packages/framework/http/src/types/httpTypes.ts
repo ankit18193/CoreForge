@@ -41,6 +41,7 @@ export interface HttpTransportOptions {
   readonly defaultTimeoutMs?: number | undefined;
   readonly errorMappingOptions?: HttpErrorMappingOptions | undefined;
   readonly autoStart?: boolean | undefined;
+  readonly router?: unknown | undefined;
 }
 
 export interface HttpAdapterConfig {

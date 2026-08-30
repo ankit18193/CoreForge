@@ -86,11 +86,21 @@ export class HttpErrorMapper {
       return HTTP_STATUS_CODES.FORBIDDEN;
     }
 
+    // Method Not Allowed handling
+    if (
+      code.includes('METHOD_NOT_ALLOWED') ||
+      code.includes('METHOD-NOT-ALLOWED') ||
+      name.includes('MethodNotAllowed')
+    ) {
+      return HTTP_STATUS_CODES.METHOD_NOT_ALLOWED;
+    }
+
     // Not Found handling
     if (
       error instanceof TransportAdapterNotFoundError ||
       code.includes('NOT_FOUND') ||
       code.includes('ADAPTER-NOT-FOUND') ||
+      code.includes('ROUTE-NOT-FOUND') ||
       name.includes('NotFound')
     ) {
       return HTTP_STATUS_CODES.NOT_FOUND;

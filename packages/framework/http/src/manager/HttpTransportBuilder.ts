@@ -2,6 +2,7 @@ import { TransportManager } from '@coreforge/contracts';
 import { ApplicationIntegration } from '@coreforge/integration';
 
 import { HttpTransportManager } from './HttpTransportManager';
+import { HttpRouter } from '../routing/HttpRouter';
 import { HttpErrorMappingOptions } from '../types/httpTypes';
 
 export class HttpTransportBuilder {
@@ -10,6 +11,7 @@ export class HttpTransportBuilder {
   private readonly _defaultTimeoutMs?: number | undefined;
   private readonly _errorMappingOptions?: HttpErrorMappingOptions | undefined;
   private readonly _autoStart?: boolean | undefined;
+  private readonly _router?: HttpRouter | undefined;
 
   private constructor(
     application?: ApplicationIntegration,
@@ -17,12 +19,14 @@ export class HttpTransportBuilder {
     defaultTimeoutMs?: number,
     errorMappingOptions?: HttpErrorMappingOptions,
     autoStart?: boolean,
+    router?: HttpRouter,
   ) {
     this._application = application;
     this._transportManager = transportManager;
     this._defaultTimeoutMs = defaultTimeoutMs;
     this._errorMappingOptions = errorMappingOptions;
     this._autoStart = autoStart;
+    this._router = router;
   }
 
   public static create(): HttpTransportBuilder {
@@ -36,6 +40,7 @@ export class HttpTransportBuilder {
       this._defaultTimeoutMs,
       this._errorMappingOptions,
       this._autoStart,
+      this._router,
     );
   }
 
@@ -46,6 +51,7 @@ export class HttpTransportBuilder {
       this._defaultTimeoutMs,
       this._errorMappingOptions,
       this._autoStart,
+      this._router,
     );
   }
 
@@ -56,6 +62,7 @@ export class HttpTransportBuilder {
       timeoutMs,
       this._errorMappingOptions,
       this._autoStart,
+      this._router,
     );
   }
 
@@ -66,6 +73,7 @@ export class HttpTransportBuilder {
       this._defaultTimeoutMs,
       errorMappingOptions,
       this._autoStart,
+      this._router,
     );
   }
 
@@ -76,6 +84,18 @@ export class HttpTransportBuilder {
       this._defaultTimeoutMs,
       this._errorMappingOptions,
       autoStart,
+      this._router,
+    );
+  }
+
+  public withRouter(router: HttpRouter): HttpTransportBuilder {
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      router,
     );
   }
 
@@ -86,6 +106,7 @@ export class HttpTransportBuilder {
       defaultTimeoutMs: this._defaultTimeoutMs,
       errorMappingOptions: this._errorMappingOptions,
       autoStart: this._autoStart,
+      router: this._router,
     });
   }
 }

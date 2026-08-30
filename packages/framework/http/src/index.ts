@@ -47,3 +47,7 @@ export * from './routing/HttpParameterExtractor';
 export * from './routing/HttpPathMatcher';
 export * from './routing/HttpRouteRegistry';
 export * from './routing/HttpRouteResolver';
+export * from './internal/HttpRoutingProfiler';
+export * from './diagnostics/HttpRoutingDiagnostics';
+export * from './routing/HttpRouter';
+export * from './routing/HttpRoutingCoordinator';

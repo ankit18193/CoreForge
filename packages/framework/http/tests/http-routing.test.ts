@@ -15,6 +15,7 @@ import type {
   HttpRoutingResult,
 } from '@coreforge/contracts';
 import { CoreForgeError } from '@coreforge/errors';
+import { ApplicationIntegrationBuilder } from '@coreforge/integration';
 
 import {
   HttpError,
@@ -29,10 +30,15 @@ import {
   HttpRouteRegistrationError,
   HttpRouteRegistry,
   HttpRouteResolver,
+  HttpRouter,
   HttpRouteSnapshot,
   HttpRouteValidationError,
   HttpRouteValidator,
+  HttpRoutingCoordinator,
+  HttpRoutingDiagnostics,
   HttpRoutingError,
+  HttpTransportBuilder,
+  HttpTransportManager,
 } from '../src/index';
 
 test('CoreForge HTTP Routing Engine (@coreforge/http) — Stage 1: Route Contracts & Definitions', async (t) => {
@@ -695,9 +701,204 @@ test('CoreForge HTTP Routing Engine (@coreforge/http) — Stage 1: Route Contrac
   );
 
   // =========================================================================
-  // 8. ARCHITECTURAL BOUNDARY
+  // 8. ROUTING DIAGNOSTICS & TELEMETRY (Stage 4)
   // =========================================================================
-  await t.test('13. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
+  await t.test(
+    '13. HttpRoutingDiagnostics: Pure numerical metrics tracking, snapshotting, and reset',
+    () => {
+      const diag = new HttpRoutingDiagnostics();
+      assert.strictEqual(diag.getSnapshot().totalRouteResolutions, 0);
+
+      diag.recordResolutionStarted();
+      diag.recordResolutionSuccess(1.2);
+
+      diag.recordResolutionStarted();
+      diag.recordRouteNotFound(0.5);
+
+      diag.recordResolutionStarted();
+      diag.recordMethodNotAllowed(0.8);
+
+      diag.recordParameterExtractionFailure();
+      diag.recordRegistrationFailure();
+
+      const snap = diag.getSnapshot();
+      assert.strictEqual(snap.totalRouteResolutions, 3);
+      assert.strictEqual(snap.successfulResolutions, 1);
+      assert.strictEqual(snap.routeNotFound, 1);
+      assert.strictEqual(snap.methodNotAllowed, 1);
+      assert.strictEqual(snap.parameterExtractionFailures, 1);
+      assert.strictEqual(snap.registrationFailures, 1);
+      assert.strictEqual(snap.resolutionFailures, 2);
+      assert.strictEqual(snap.activeResolutions, 0);
+      assert.ok(snap.averageResolutionDurationMs > 0);
+      assert.ok(Object.isFrozen(snap));
+
+      diag.reset();
+      const resetSnap = diag.getSnapshot();
+      assert.strictEqual(resetSnap.totalRouteResolutions, 0);
+      assert.strictEqual(resetSnap.successfulResolutions, 0);
+    },
+  );
+
+  // =========================================================================
+  // 9. ROUTER CONVENIENCE API (Stage 4)
+  // =========================================================================
+  await t.test(
+    '14. HttpRouter: Canonical .route() and convenience registration methods (.get, .post, etc.)',
+    () => {
+      const router = new HttpRouter();
+
+      router.get('/users', 'users.list');
+      router.post('/users', 'users.create');
+      router.put('/users/:id', 'users.update');
+      router.patch('/users/:id', 'users.patch');
+      router.delete('/users/:id', 'users.delete');
+      router.head('/health', 'health.check');
+      router.options('/users', 'users.options');
+
+      assert.strictEqual(router.size, 7);
+
+      const matchGet = router.resolve('GET', '/users');
+      assert.strictEqual(matchGet?.operation, 'users.list');
+
+      const matchPost = router.resolve('POST', '/users');
+      assert.strictEqual(matchPost?.operation, 'users.create');
+
+      const matchPut = router.resolve('PUT', '/users/99');
+      assert.strictEqual(matchPut?.operation, 'users.update');
+      assert.strictEqual(matchPut?.parameters.id, '99');
+
+      const matchPatch = router.resolve('PATCH', '/users/99');
+      assert.strictEqual(matchPatch?.operation, 'users.patch');
+
+      const matchDel = router.resolve('DELETE', '/users/99');
+      assert.strictEqual(matchDel?.operation, 'users.delete');
+
+      const matchHead = router.resolve('HEAD', '/health');
+      assert.strictEqual(matchHead?.operation, 'health.check');
+
+      const matchOptions = router.resolve('OPTIONS', '/users');
+      assert.strictEqual(matchOptions?.operation, 'users.options');
+    },
+  );
+
+  // =========================================================================
+  // 10. ROUTING COORDINATOR & EXECUTION INTEGRATION (Stage 4)
+  // =========================================================================
+  await t.test(
+    '15. HttpRoutingCoordinator: End-to-end route resolution and request dispatch with zero body mutation',
+    async () => {
+      // 1. Setup Application Integration
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('users.getById', {
+        async execute(input: unknown) {
+          const inp = input as { parameters: { id: string }; body: { search?: string } };
+          return {
+            userId: inp.parameters.id,
+            receivedBody: inp.body,
+            source: 'app-service',
+          };
+        },
+      });
+      await app.start();
+
+      // 2. Setup Router
+      const router = new HttpRouter();
+      router.get('/api/v1/users/:id', 'users.getById');
+
+      // 3. Build HttpTransportManager with Router
+      const httpManager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const originalBody = { search: 'Alice' };
+
+      // 4. Handle routed request
+      assert.ok(httpManager instanceof HttpTransportManager);
+      assert.ok(httpManager.routingCoordinator instanceof HttpRoutingCoordinator);
+      const response = await httpManager.handleRoutedRequest<
+        { search: string },
+        { userId: string; receivedBody: { search: string } }
+      >({
+        method: 'GET',
+        url: '/api/v1/users/42',
+        path: '/api/v1/users/42',
+        headers: { 'Content-Type': 'application/json' },
+        body: originalBody,
+      });
+
+      assert.strictEqual(response.status, 200);
+      assert.strictEqual(response.body?.userId, '42');
+      assert.deepStrictEqual(response.body?.receivedBody, { search: 'Alice' });
+
+      // Verification of Invariant (Correction 1): Original request body was not mutated with route parameters
+      assert.strictEqual('id' in originalBody, false);
+      assert.deepStrictEqual(originalBody, { search: 'Alice' });
+
+      const routingDiag = httpManager.getRoutingDiagnostics();
+      assert.strictEqual(routingDiag.totalRouteResolutions, 1);
+      assert.strictEqual(routingDiag.successfulResolutions, 1);
+      assert.strictEqual(routingDiag.routeNotFound, 0);
+
+      await httpManager.stop();
+      await app.stop();
+    },
+  );
+
+  await t.test(
+    '16. HttpRoutingCoordinator: 404 Route Not Found and 405 Method Not Allowed handling',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/products/:id', 'products.get');
+      router.delete('/products/:id', 'products.delete');
+
+      const httpManager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      // 1. Unknown path -> 404 Not Found
+      const notFoundRes = await httpManager.handleRoutedRequest({
+        method: 'GET',
+        url: '/nonexistent/resource',
+        path: '/nonexistent/resource',
+        headers: {},
+      });
+      assert.strictEqual(notFoundRes.status, 404);
+
+      // 2. Known path but unsupported method -> 405 Method Not Allowed
+      const notAllowedRes = await httpManager.handleRoutedRequest({
+        method: 'POST',
+        url: '/products/123',
+        path: '/products/123',
+        headers: {},
+      });
+      assert.strictEqual(notAllowedRes.status, 405);
+      const allowHeader = String(
+        notAllowedRes.headers.allow || notAllowedRes.headers['allow'] || '',
+      );
+      assert.strictEqual(allowHeader.includes('GET'), true);
+      assert.strictEqual(allowHeader.includes('DELETE'), true);
+
+      const routingDiag = httpManager.getRoutingDiagnostics();
+      assert.strictEqual(routingDiag.routeNotFound, 1);
+      assert.strictEqual(routingDiag.methodNotAllowed, 1);
+
+      await httpManager.stop();
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 11. ARCHITECTURAL BOUNDARY
+  // =========================================================================
+  await t.test('17. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
