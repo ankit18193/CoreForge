@@ -896,9 +896,138 @@ test('CoreForge HTTP Routing Engine (@coreforge/http) — Stage 1: Route Contrac
   );
 
   // =========================================================================
-  // 11. ARCHITECTURAL BOUNDARY
+  // 11. HIGH-CONCURRENCY STRESS & ISOLATION (Stage 5)
   // =========================================================================
-  await t.test('17. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
+  await t.test(
+    '17. High-concurrency: 1,000 concurrent routed requests under load with zero parameter bleed',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+
+      // Register services
+      app.applicationManager.register('users.get', {
+        async execute(input: unknown) {
+          const inp = input as { parameters: { id: string } };
+          return { service: 'users.get', id: inp.parameters.id };
+        },
+      });
+      app.applicationManager.register('users.posts.list', {
+        async execute(input: unknown) {
+          const inp = input as { parameters: { userId: string; postId: string } };
+          return {
+            service: 'users.posts.list',
+            userId: inp.parameters.userId,
+            postId: inp.parameters.postId,
+          };
+        },
+      });
+      app.applicationManager.register('system.health', {
+        async execute() {
+          return { status: 'healthy' };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/api/users/:id', 'users.get');
+      router.get('/api/users/:userId/posts/:postId', 'users.posts.list');
+      router.get('/api/health', 'system.health');
+
+      const httpManager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const CONCURRENCY = 1000;
+      const tasks = Array.from({ length: CONCURRENCY }, async (_, idx) => {
+        const mod = idx % 4;
+        if (mod === 0) {
+          // users.get
+          const userId = `usr_${idx}`;
+          const res = await httpManager.handleRoutedRequest<
+            unknown,
+            { service: string; id: string }
+          >({
+            method: 'GET',
+            url: `/api/users/${userId}`,
+            path: `/api/users/${userId}`,
+            headers: {},
+          });
+          assert.strictEqual(res.status, 200);
+          assert.strictEqual(res.body?.service, 'users.get');
+          assert.strictEqual(res.body?.id, userId);
+        } else if (mod === 1) {
+          // users.posts.list
+          const userId = `u_${idx}`;
+          const postId = `p_${idx}`;
+          const res = await httpManager.handleRoutedRequest<
+            unknown,
+            { service: string; userId: string; postId: string }
+          >({
+            method: 'GET',
+            url: `/api/users/${userId}/posts/${postId}`,
+            path: `/api/users/${userId}/posts/${postId}`,
+            headers: {},
+          });
+          assert.strictEqual(res.status, 200);
+          assert.strictEqual(res.body?.service, 'users.posts.list');
+          assert.strictEqual(res.body?.userId, userId);
+          assert.strictEqual(res.body?.postId, postId);
+        } else if (mod === 2) {
+          // system.health
+          const res = await httpManager.handleRoutedRequest<unknown, { status: string }>({
+            method: 'GET',
+            url: '/api/health',
+            path: '/api/health',
+            headers: {},
+          });
+          assert.strictEqual(res.status, 200);
+          assert.strictEqual(res.body?.status, 'healthy');
+        } else {
+          // 404 or 405
+          if (idx % 8 === 3) {
+            // 405
+            const res = await httpManager.handleRoutedRequest({
+              method: 'POST',
+              url: '/api/health',
+              path: '/api/health',
+              headers: {},
+            });
+            assert.strictEqual(res.status, 405);
+          } else {
+            // 404
+            const res = await httpManager.handleRoutedRequest({
+              method: 'GET',
+              url: `/unknown/route/${idx}`,
+              path: `/unknown/route/${idx}`,
+              headers: {},
+            });
+            assert.strictEqual(res.status, 404);
+          }
+        }
+      });
+
+      await Promise.all(tasks);
+
+      const routingDiag = httpManager.getRoutingDiagnostics();
+      assert.strictEqual(routingDiag.totalRouteResolutions, CONCURRENCY);
+      assert.strictEqual(routingDiag.activeResolutions, 0);
+      assert.strictEqual(
+        routingDiag.successfulResolutions +
+          routingDiag.routeNotFound +
+          routingDiag.methodNotAllowed,
+        CONCURRENCY,
+      );
+
+      await httpManager.stop();
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 12. ARCHITECTURAL BOUNDARY
+  // =========================================================================
+  await t.test('18. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
