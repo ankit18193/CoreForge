@@ -3,13 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { test } from 'node:test';
 
-import {
+import type {
   HttpMethod,
   HttpRoute,
   HttpRouteMatch,
   HttpRouteOptions,
-  HttpRouteRegistry,
-  HttpRouteResolver,
+  HttpRouteRegistry as IHttpRouteRegistry,
+  HttpRouteResolver as IHttpRouteResolver,
   HttpRoutingDiagnosticsSnapshot,
   HttpRoutingOptions,
   HttpRoutingResult,
@@ -24,6 +24,8 @@ import {
   HttpRouteDuplicateError,
   HttpRouteNotFoundError,
   HttpRouteRegistrationError,
+  HttpRouteRegistry,
+  HttpRouteResolver,
   HttpRouteSnapshot,
   HttpRouteValidationError,
   HttpRouteValidator,
@@ -66,7 +68,7 @@ test('CoreForge HTTP Routing Engine (@coreforge/http) — Stage 1: Route Contrac
     };
     assert.strictEqual(routingOpts.defaultPriority, 50);
 
-    const dummyRegistry: HttpRouteRegistry = {
+    const dummyRegistry: IHttpRouteRegistry = {
       size: 1,
       locked: false,
       register(_r, _o) {},
@@ -80,7 +82,7 @@ test('CoreForge HTTP Routing Engine (@coreforge/http) — Stage 1: Route Contrac
     };
     assert.strictEqual(dummyRegistry.size, 1);
 
-    const dummyResolver: HttpRouteResolver = {
+    const dummyResolver: IHttpRouteResolver = {
       resolve(_method, _path) {
         return undefined;
       },
@@ -370,9 +372,234 @@ test('CoreForge HTTP Routing Engine (@coreforge/http) — Stage 1: Route Contrac
   );
 
   // =========================================================================
-  // 5. ARCHITECTURAL BOUNDARY
+  // 5. ROUTE REGISTRY & IMMUTABILITY (Stage 2)
   // =========================================================================
-  await t.test('5. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
+  await t.test(
+    '5. HttpRouteRegistry: Registration, O(1) retrieval, duplicate prevention, and locking',
+    () => {
+      const registry = new HttpRouteRegistry();
+      assert.strictEqual(registry.size, 0);
+      assert.strictEqual(registry.locked, false);
+
+      // 1. Register routes
+      registry.register({
+        id: 'users.list',
+        method: 'GET',
+        path: '/users',
+        operation: 'users.list',
+      });
+      registry.register({
+        id: 'users.get',
+        method: 'GET',
+        path: '/users/:id',
+        operation: 'users.get',
+        priority: 10,
+      });
+
+      assert.strictEqual(registry.size, 2);
+
+      // 2. O(1) retrieval
+      const r1 = registry.get('users.list');
+      assert.strictEqual(r1?.id, 'users.list');
+      assert.strictEqual(r1?.path, '/users');
+
+      const nonExistent = registry.get('unknown');
+      assert.strictEqual(nonExistent, undefined);
+
+      // 3. List
+      const all = registry.list();
+      assert.strictEqual(all.length, 2);
+      assert.ok(Object.isFrozen(all));
+
+      // 4. Duplicate ID rejection
+      assert.throws(
+        () =>
+          registry.register({
+            id: 'users.list',
+            method: 'POST',
+            path: '/users/new',
+            operation: 'users.create',
+          }),
+        (err: Error) => err instanceof HttpRouteDuplicateError && err.routeId === 'users.list',
+      );
+
+      // 5. Locking
+      registry.lock();
+      assert.strictEqual(registry.locked, true);
+
+      assert.throws(
+        () =>
+          registry.register({
+            id: 'users.create',
+            method: 'POST',
+            path: '/users',
+            operation: 'users.create',
+          }),
+        (err: Error) => err instanceof HttpRouteRegistrationError,
+      );
+    },
+  );
+
+  // =========================================================================
+  // 6. ROUTE RESOLUTION & DETERMINISTIC PRECEDENCE (Stage 2)
+  // =========================================================================
+  await t.test(
+    '6. HttpRouteResolver: Specificity-first precedence (static beats parameterized regardless of priority)',
+    () => {
+      const registry = new HttpRouteRegistry();
+
+      // Parameter route registered FIRST with HIGH priority
+      registry.register({
+        id: 'user.param',
+        method: 'GET',
+        path: '/users/:id',
+        operation: 'users.getById',
+        priority: 1000, // Very high priority
+      });
+
+      // Static route registered SECOND with LOW priority
+      registry.register({
+        id: 'user.me',
+        method: 'GET',
+        path: '/users/me',
+        operation: 'users.getMe',
+        priority: 1, // Low priority
+      });
+
+      const resolver = new HttpRouteResolver(registry);
+
+      // Resolving /users/me MUST resolve to static route (specificity wins before priority)
+      const matchMe = resolver.resolve('GET', '/users/me');
+      assert.strictEqual(matchMe?.routeId, 'user.me');
+      assert.strictEqual(matchMe?.operation, 'users.getMe');
+      assert.deepStrictEqual(matchMe?.parameters, {});
+
+      // Resolving /users/42 MUST resolve to parameter route
+      const match42 = resolver.resolve('GET', '/users/42');
+      assert.strictEqual(match42?.routeId, 'user.param');
+      assert.strictEqual(match42?.operation, 'users.getById');
+      assert.deepStrictEqual(match42?.parameters, { id: '42' });
+    },
+  );
+
+  await t.test(
+    '7. HttpRouteResolver: Deterministic tie-breaking by priority DESC and registration sequence ASC',
+    () => {
+      const registry = new HttpRouteRegistry();
+
+      // Two routes with same shape/specificity: priority wins
+      registry.register({
+        id: 'op.low',
+        method: 'POST',
+        path: '/action/:actionId',
+        operation: 'action.low',
+        priority: 10,
+      });
+      registry.register({
+        id: 'op.high',
+        method: 'POST',
+        path: '/action/:id',
+        operation: 'action.high',
+        priority: 50,
+      });
+
+      const resolver = new HttpRouteResolver(registry);
+      const matchAction = resolver.resolve('POST', '/action/run');
+      assert.strictEqual(matchAction?.routeId, 'op.high');
+      assert.strictEqual(matchAction?.operation, 'action.high');
+      assert.strictEqual(matchAction?.parameters.id, 'run');
+
+      // Two routes with same shape and same priority: sequence ASC wins
+      const registry2 = new HttpRouteRegistry();
+      registry2.register({
+        id: 'first.registered',
+        method: 'PUT',
+        path: '/item/:id',
+        operation: 'item.first',
+        priority: 20,
+      });
+      registry2.register({
+        id: 'second.registered',
+        method: 'PUT',
+        path: '/item/:itemId',
+        operation: 'item.second',
+        priority: 20,
+      });
+
+      const resolver2 = new HttpRouteResolver(registry2);
+      const matchItem = resolver2.resolve('PUT', '/item/abc');
+      assert.strictEqual(matchItem?.routeId, 'first.registered');
+      assert.strictEqual(matchItem?.operation, 'item.first');
+      assert.strictEqual(matchItem?.parameters.id, 'abc');
+    },
+  );
+
+  await t.test('8. HttpRouteResolver: Multi-parameter extraction and URL decoding', () => {
+    const registry = new HttpRouteRegistry();
+    registry.register({
+      id: 'org.project.resource',
+      method: 'GET',
+      path: '/orgs/:orgId/projects/:projectId/resources/:resourceId',
+      operation: 'resource.get',
+    });
+
+    const resolver = new HttpRouteResolver(registry);
+    const match = resolver.resolve('GET', '/orgs/acme%20corp/projects/proj-101/resources/res%2399');
+
+    assert.strictEqual(match?.routeId, 'org.project.resource');
+    assert.strictEqual(match?.operation, 'resource.get');
+    assert.deepStrictEqual(match?.parameters, {
+      orgId: 'acme corp',
+      projectId: 'proj-101',
+      resourceId: 'res#99',
+    });
+    assert.ok(Object.isFrozen(match));
+    assert.ok(Object.isFrozen(match?.parameters));
+  });
+
+  await t.test(
+    '9. HttpRouteResolver: Method filtering and findAllowedMethodsForPath for 405 distinction',
+    () => {
+      const registry = new HttpRouteRegistry();
+      registry.register({
+        id: 'users.get',
+        method: 'GET',
+        path: '/users/:id',
+        operation: 'users.get',
+      });
+      registry.register({
+        id: 'users.delete',
+        method: 'DELETE',
+        path: '/users/:id',
+        operation: 'users.delete',
+      });
+
+      const resolver = new HttpRouteResolver(registry);
+
+      // GET matches
+      const matchGet = resolver.resolve('GET', '/users/100');
+      assert.strictEqual(matchGet?.routeId, 'users.get');
+
+      // POST does not match (method not allowed)
+      const matchPost = resolver.resolve('POST', '/users/100');
+      assert.strictEqual(matchPost, undefined);
+
+      // findAllowedMethodsForPath identifies ['GET', 'DELETE']
+      const allowed = resolver.findAllowedMethodsForPath('/users/100');
+      assert.strictEqual(allowed.length, 2);
+      assert.ok(allowed.includes('GET'));
+      assert.ok(allowed.includes('DELETE'));
+
+      // Unknown path returns empty allowed methods
+      const allowedUnknown = resolver.findAllowedMethodsForPath('/unknown/path/here');
+      assert.strictEqual(allowedUnknown.length, 0);
+    },
+  );
+
+  // =========================================================================
+  // 10. ARCHITECTURAL BOUNDARY
+  // =========================================================================
+  await t.test('10. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
