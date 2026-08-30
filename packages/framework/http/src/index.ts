@@ -36,3 +36,9 @@ export * from './execution/HttpExecutionCoordinator';
 // Manager & Builder
 export * from './manager/HttpTransportManager';
 export * from './manager/HttpTransportBuilder';
+
+// Routing
+export * from './types/httpRoutingTypes';
+export * from './errors/HttpRoutingErrors';
+export * from './routing/HttpRouteValidator';
+export * from './routing/HttpRouteSnapshot';

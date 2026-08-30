@@ -2207,3 +2207,69 @@ export interface HttpDiagnosticsSnapshot {
   readonly averageDurationMs: number;
   readonly slowestDurationMs: number;
 }
+
+// ============================================================================
+// HTTP ROUTING CONTRACTS
+// ============================================================================
+
+export interface HttpRoute {
+  readonly id: string;
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly operation: string;
+  readonly priority?: number | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpRouteOptions {
+  readonly priority?: number | undefined;
+  readonly metadata?: Record<string, unknown> | undefined;
+}
+
+export interface HttpRouteMatch {
+  readonly routeId: string;
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly operation: string;
+  readonly parameters: Readonly<Record<string, string>>;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpRouteRegistry {
+  readonly size: number;
+  readonly locked: boolean;
+  register(route: HttpRoute, options?: HttpRouteOptions): void;
+  get(routeId: string): HttpRoute | undefined;
+  list(): readonly HttpRoute[];
+  lock(): void;
+}
+
+export interface HttpRouteResolver {
+  resolve(method: HttpMethod, path: string): HttpRouteMatch | undefined;
+  match(request: HttpRequest): HttpRouteMatch | undefined;
+}
+
+export interface HttpRoutingOptions {
+  readonly strictTrailingSlash?: boolean | undefined;
+  readonly caseSensitive?: boolean | undefined;
+  readonly defaultPriority?: number | undefined;
+}
+
+export interface HttpRoutingResult {
+  readonly matched: boolean;
+  readonly match?: HttpRouteMatch | undefined;
+  readonly error?: unknown;
+}
+
+export interface HttpRoutingDiagnosticsSnapshot {
+  readonly totalRouteResolutions: number;
+  readonly successfulResolutions: number;
+  readonly routeNotFound: number;
+  readonly methodNotAllowed: number;
+  readonly parameterExtractionFailures: number;
+  readonly registrationFailures: number;
+  readonly resolutionFailures: number;
+  readonly activeResolutions: number;
+  readonly averageResolutionDurationMs: number;
+  readonly slowestResolutionDurationMs: number;
+}
