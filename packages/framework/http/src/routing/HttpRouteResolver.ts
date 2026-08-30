@@ -5,51 +5,15 @@ import {
   HttpRequest,
 } from '@coreforge/contracts';
 
+import { HttpPathMatcher } from './HttpPathMatcher';
+import { HttpRoutePattern } from './HttpRoutePattern';
 import { HttpRouteRegistry, RegisteredRouteEntry } from './HttpRouteRegistry';
-import { HttpRouteSnapshot } from './HttpRouteSnapshot';
-import { ParsedRoutePattern, RouteSegment } from '../types/httpRoutingTypes';
-
-function splitPathSegments(path: string): string[] {
-  const normalized = HttpRouteSnapshot.normalizePath(path);
-  if (normalized === '/') {
-    return [];
-  }
-  return normalized.slice(1).split('/');
-}
-
-function parseRoutePattern(routePath: string): ParsedRoutePattern {
-  const rawSegments = splitPathSegments(routePath);
-  const segments: RouteSegment[] = rawSegments.map((seg) => {
-    if (seg.startsWith(':') && seg.length > 1) {
-      return {
-        type: 'PARAM',
-        value: seg,
-        paramName: seg.slice(1),
-      };
-    }
-    return {
-      type: 'STATIC',
-      value: seg,
-    };
-  });
-
-  const staticSegmentCount = segments.filter((s) => s.type === 'STATIC').length;
-  const paramSegmentCount = segments.filter((s) => s.type === 'PARAM').length;
-
-  return {
-    rawPath: routePath,
-    normalizedPath: HttpRouteSnapshot.normalizePath(routePath),
-    segments,
-    staticSegmentCount,
-    paramSegmentCount,
-    isStaticOnly: paramSegmentCount === 0,
-  };
-}
+import { ParsedRoutePattern } from '../types/httpRoutingTypes';
 
 interface MatchCandidate {
   readonly entry: RegisteredRouteEntry;
   readonly pattern: ParsedRoutePattern;
-  readonly extractedParams: Record<string, string>;
+  readonly extractedParams: Readonly<Record<string, string>>;
 }
 
 export class HttpRouteResolver implements IHttpRouteResolver {
@@ -67,47 +31,10 @@ export class HttpRouteResolver implements IHttpRouteResolver {
   private _getParsedPattern(routePath: string): ParsedRoutePattern {
     let pattern = this._patternCache.get(routePath);
     if (!pattern) {
-      pattern = parseRoutePattern(routePath);
+      pattern = HttpRoutePattern.parse(routePath);
       this._patternCache.set(routePath, pattern);
     }
     return pattern;
-  }
-
-  private _matchSegments(
-    pattern: ParsedRoutePattern,
-    requestSegments: string[],
-  ): { matched: boolean; params: Record<string, string> } {
-    if (pattern.segments.length !== requestSegments.length) {
-      return { matched: false, params: {} };
-    }
-
-    const params: Record<string, string> = {};
-
-    for (let i = 0; i < pattern.segments.length; i++) {
-      const routeSeg = pattern.segments[i];
-      const reqSeg = requestSegments[i];
-
-      if (routeSeg.type === 'STATIC') {
-        if (routeSeg.value !== reqSeg) {
-          return { matched: false, params: {} };
-        }
-      } else if (routeSeg.type === 'PARAM') {
-        if (!reqSeg || reqSeg.trim().length === 0) {
-          return { matched: false, params: {} };
-        }
-        let decodedParam: string;
-        try {
-          decodedParam = decodeURIComponent(reqSeg);
-        } catch {
-          decodedParam = reqSeg;
-        }
-        if (routeSeg.paramName) {
-          params[routeSeg.paramName] = decodedParam;
-        }
-      }
-    }
-
-    return { matched: true, params };
   }
 
   private _compareCandidates(a: MatchCandidate, b: MatchCandidate): number {
@@ -139,18 +66,17 @@ export class HttpRouteResolver implements IHttpRouteResolver {
       return undefined;
     }
 
-    const requestSegments = splitPathSegments(path);
     const candidates: MatchCandidate[] = [];
 
     for (const entry of entries) {
       const pattern = this._getParsedPattern(entry.route.path);
-      const matchResult = this._matchSegments(pattern, requestSegments);
+      const matchResult = HttpPathMatcher.match(pattern, path);
 
       if (matchResult.matched) {
         candidates.push({
           entry,
           pattern,
-          extractedParams: matchResult.params,
+          extractedParams: matchResult.parameters,
         });
       }
     }
@@ -168,7 +94,7 @@ export class HttpRouteResolver implements IHttpRouteResolver {
       method: best.entry.route.method,
       path: best.entry.route.path,
       operation: best.entry.route.operation,
-      parameters: Object.freeze({ ...best.extractedParams }),
+      parameters: best.extractedParams,
       metadata: best.entry.route.metadata,
     };
 
@@ -184,12 +110,11 @@ export class HttpRouteResolver implements IHttpRouteResolver {
   }
 
   public findAllowedMethodsForPath(path: string): readonly HttpMethod[] {
-    const requestSegments = splitPathSegments(path);
     const allowed = new Set<HttpMethod>();
 
     for (const entry of this._registry.listEntries()) {
       const pattern = this._getParsedPattern(entry.route.path);
-      const matchResult = this._matchSegments(pattern, requestSegments);
+      const matchResult = HttpPathMatcher.match(pattern, path);
       if (matchResult.matched) {
         allowed.add(entry.route.method);
       }

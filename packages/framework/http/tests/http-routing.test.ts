@@ -20,9 +20,12 @@ import {
   HttpError,
   HttpMethodNotAllowedError,
   HttpParameterError,
+  HttpParameterExtractor,
+  HttpPathMatcher,
   HttpRouteConflictError,
   HttpRouteDuplicateError,
   HttpRouteNotFoundError,
+  HttpRoutePattern,
   HttpRouteRegistrationError,
   HttpRouteRegistry,
   HttpRouteResolver,
@@ -597,9 +600,104 @@ test('CoreForge HTTP Routing Engine (@coreforge/http) — Stage 1: Route Contrac
   );
 
   // =========================================================================
-  // 10. ARCHITECTURAL BOUNDARY
+  // 7. PATH MATCHING & PARAMETER EXTRACTION (Stage 3)
   // =========================================================================
-  await t.test('10. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
+  await t.test('10. HttpRoutePattern: Path parsing, segment classification, and validation', () => {
+    // 1. Static pattern
+    const staticP = HttpRoutePattern.parse('/api/v1/health');
+    assert.strictEqual(staticP.isStaticOnly, true);
+    assert.strictEqual(staticP.staticSegmentCount, 3);
+    assert.strictEqual(staticP.paramSegmentCount, 0);
+    assert.strictEqual(staticP.segments.length, 3);
+    assert.strictEqual(staticP.segments[0].type, 'STATIC');
+    assert.strictEqual(staticP.segments[0].value, 'api');
+
+    // 2. Parameterized pattern
+    const paramP = HttpRoutePattern.parse('/users/:userId/orders/:orderId');
+    assert.strictEqual(paramP.isStaticOnly, false);
+    assert.strictEqual(paramP.staticSegmentCount, 2);
+    assert.strictEqual(paramP.paramSegmentCount, 2);
+    assert.strictEqual(paramP.segments[1].type, 'PARAM');
+    assert.strictEqual(paramP.segments[1].paramName, 'userId');
+    assert.strictEqual(paramP.segments[3].type, 'PARAM');
+    assert.strictEqual(paramP.segments[3].paramName, 'orderId');
+
+    // 3. Rejection of empty parameter name
+    assert.throws(
+      () => HttpRoutePattern.parse('/users/:'),
+      (err: Error) => err instanceof HttpRouteValidationError,
+    );
+
+    // 4. Rejection of invalid parameter identifier
+    assert.throws(
+      () => HttpRoutePattern.parse('/users/:123invalid'),
+      (err: Error) => err instanceof HttpRouteValidationError,
+    );
+
+    // 5. Rejection of duplicate parameter name in same route
+    assert.throws(
+      () => HttpRoutePattern.parse('/users/:id/orders/:id'),
+      (err: Error) => err instanceof HttpParameterError && err.parameterName === 'id',
+    );
+  });
+
+  await t.test(
+    '11. HttpParameterExtractor: Safe decoding, special character handling, and resilience',
+    () => {
+      const pattern = HttpRoutePattern.parse('/search/:query/filter/:tag');
+      const segments = ['search', 'hello%20world%2Bplus', 'filter', 'c%23'];
+
+      const params = HttpParameterExtractor.extract(pattern, segments);
+      assert.strictEqual(params.query, 'hello world+plus');
+      assert.strictEqual(params.tag, 'c#');
+      assert.ok(Object.isFrozen(params));
+
+      // Malformed URI sequence fallback without throwing
+      const malformedSegments = ['search', '%E0%A4%A', 'filter', 'safe'];
+      const malformedParams = HttpParameterExtractor.extract(pattern, malformedSegments);
+      assert.strictEqual(malformedParams.query, '%E0%A4%A');
+      assert.strictEqual(malformedParams.tag, 'safe');
+    },
+  );
+
+  await t.test(
+    '12. HttpPathMatcher: Exact static and parameterized matching, trailing slashes, and case-sensitivity',
+    () => {
+      const pattern = HttpRoutePattern.parse('/api/v1/users/:id');
+
+      // Exact match
+      const m1 = HttpPathMatcher.match(pattern, '/api/v1/users/42');
+      assert.strictEqual(m1.matched, true);
+      assert.deepStrictEqual(m1.parameters, { id: '42' });
+
+      // Trailing slash handled transparently
+      const m2 = HttpPathMatcher.match(pattern, '/api/v1/users/42/');
+      assert.strictEqual(m2.matched, true);
+      assert.deepStrictEqual(m2.parameters, { id: '42' });
+
+      // Mismatched segment length
+      const m3 = HttpPathMatcher.match(pattern, '/api/v1/users/42/details');
+      assert.strictEqual(m3.matched, false);
+
+      // Mismatched static segment
+      const m4 = HttpPathMatcher.match(pattern, '/api/v2/users/42');
+      assert.strictEqual(m4.matched, false);
+
+      // Case sensitivity: default is case-sensitive (fails on uppercase)
+      const m5 = HttpPathMatcher.match(pattern, '/API/V1/USERS/42');
+      assert.strictEqual(m5.matched, false);
+
+      // Case sensitivity: caseSensitive = false matches
+      const m6 = HttpPathMatcher.match(pattern, '/API/V1/USERS/42', { caseSensitive: false });
+      assert.strictEqual(m6.matched, true);
+      assert.deepStrictEqual(m6.parameters, { id: '42' });
+    },
+  );
+
+  // =========================================================================
+  // 8. ARCHITECTURAL BOUNDARY
+  // =========================================================================
+  await t.test('13. Architectural boundary: Zero forbidden dependencies in routing modules', () => {
     const pkgJsonPath = path.resolve(__dirname, '../../package.json');
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 

@@ -42,5 +42,8 @@ export * from './types/httpRoutingTypes';
 export * from './errors/HttpRoutingErrors';
 export * from './routing/HttpRouteValidator';
 export * from './routing/HttpRouteSnapshot';
+export * from './routing/HttpRoutePattern';
+export * from './routing/HttpParameterExtractor';
+export * from './routing/HttpPathMatcher';
 export * from './routing/HttpRouteRegistry';
 export * from './routing/HttpRouteResolver';
