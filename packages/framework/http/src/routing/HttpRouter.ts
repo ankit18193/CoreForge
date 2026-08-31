@@ -1,5 +1,7 @@
 import {
   HttpMethod,
+  HttpMiddleware,
+  HttpMiddlewareOptions,
   HttpRoute,
   HttpRouteMatch,
   HttpRouteOptions,
@@ -8,14 +10,17 @@ import {
 
 import { HttpRouteRegistry } from './HttpRouteRegistry';
 import { HttpRouteResolver } from './HttpRouteResolver';
+import { HttpMiddlewareCoordinator } from '../middleware/HttpMiddlewareCoordinator';
 
 export class HttpRouter {
   private readonly _registry: HttpRouteRegistry;
   private readonly _resolver: HttpRouteResolver;
+  private readonly _middlewareCoordinator: HttpMiddlewareCoordinator;
 
-  constructor(registry?: HttpRouteRegistry) {
+  constructor(registry?: HttpRouteRegistry, middlewareCoordinator?: HttpMiddlewareCoordinator) {
     this._registry = registry ?? new HttpRouteRegistry();
     this._resolver = new HttpRouteResolver(this._registry);
+    this._middlewareCoordinator = middlewareCoordinator ?? new HttpMiddlewareCoordinator();
   }
 
   public get registry(): HttpRouteRegistry {
@@ -24,6 +29,18 @@ export class HttpRouter {
 
   public get resolver(): HttpRouteResolver {
     return this._resolver;
+  }
+
+  public get middlewareCoordinator(): HttpMiddlewareCoordinator {
+    return this._middlewareCoordinator;
+  }
+
+  public use<TContext = unknown, TResult = unknown>(
+    middleware: HttpMiddleware<TContext, TResult>,
+    options?: HttpMiddlewareOptions,
+  ): this {
+    this._middlewareCoordinator.register(middleware, options);
+    return this;
   }
 
   public get size(): number {
@@ -36,6 +53,7 @@ export class HttpRouter {
 
   public lock(): void {
     this._registry.lock();
+    this._middlewareCoordinator.registry.lock();
   }
 
   /**

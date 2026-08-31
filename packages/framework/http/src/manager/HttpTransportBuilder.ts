@@ -99,6 +99,22 @@ export class HttpTransportBuilder {
     );
   }
 
+  public withMiddleware(
+    middleware: import('@coreforge/contracts').HttpMiddleware,
+    options?: import('@coreforge/contracts').HttpMiddlewareOptions,
+  ): HttpTransportBuilder {
+    const router = this._router ?? new HttpRouter();
+    router.use(middleware, options);
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      router,
+    );
+  }
+
   public build(): HttpTransportManager {
     return new HttpTransportManager({
       application: this._application,

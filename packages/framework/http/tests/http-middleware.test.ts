@@ -17,8 +17,10 @@ import type {
   HttpMiddlewareRouteInfo,
   HttpMiddlewareState,
   HttpRequest,
+  HttpResponse,
 } from '@coreforge/contracts';
 import { CoreForgeError } from '@coreforge/errors';
+import { ApplicationIntegrationBuilder } from '@coreforge/integration';
 
 import {
   HttpError,
@@ -30,6 +32,7 @@ import {
   HttpMiddlewareError,
   HttpMiddlewareExecutionError,
   HttpMiddlewareExecutor,
+  HttpMiddlewarePipeline,
   HttpMiddlewarePipelineError,
   HttpMiddlewareProfiler,
   HttpMiddlewareRegistrationError,
@@ -40,9 +43,13 @@ import {
   HttpMiddlewareTimeoutError,
   HttpMiddlewareValidationError,
   HttpMiddlewareValidator,
+  HttpRouter,
+  HttpRoutingCoordinator,
+  HttpTransportBuilder,
+  HttpTransportManager,
 } from '../src/index';
 
-test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1, 2, 3: Middleware Execution & Reverse Unwinding', async (t) => {
+test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stages 1-4: Middleware Pipeline & Routing Integration', async (t) => {
   // =========================================================================
   // 1. CONTRACTS & TYPES
   // =========================================================================
@@ -1192,6 +1199,307 @@ test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1, 2, 3: Midd
       assert.strictEqual(outcome.batch.totalMiddleware, 1);
       assert.strictEqual(outcome.batch.executedMiddleware, 1);
       assert.strictEqual(outcome.batch.success, true);
+    },
+  );
+
+  // =========================================================================
+  // 18. END-TO-END ROUTING + MIDDLEWARE + EXECUTION PIPELINE
+  // =========================================================================
+  await t.test(
+    '18. End-to-End: Request -> Route -> Middleware -> Execution -> Application -> Unwinding -> Response',
+    async () => {
+      let appServiceExecuted = false;
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('users.getById', {
+        async execute(input: unknown) {
+          appServiceExecuted = true;
+          const typedInput = input as { parameters: { id: string } };
+          return { userId: typedInput.parameters.id, username: 'alice' };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/api/v1/users/:id', 'users.getById');
+
+      const auditTrail: string[] = [];
+
+      router.use(
+        {
+          id: 'timing-mw',
+          execute: async (_ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+            auditTrail.push('timing:enter');
+            const res = (await next()) as HttpResponse<{ userId: string; username: string }>;
+            auditTrail.push('timing:exit');
+            return {
+              ...res,
+              headers: {
+                ...res.headers,
+                'x-execution-time': '12ms',
+              },
+            };
+          },
+        },
+        { priority: 100 },
+      );
+
+      router.use(
+        {
+          id: 'auth-header-mw',
+          execute: async (ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+            auditTrail.push('auth:check');
+            assert.strictEqual(ctx.route?.id, 'GET:/api/v1/users/:id');
+            assert.strictEqual(ctx.parameters.id, '42');
+            return next();
+          },
+        },
+        { priority: 50 },
+      );
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const response = await manager.handleRoutedRequest({
+        method: 'GET',
+        url: '/api/v1/users/42',
+        path: '/api/v1/users/42',
+        headers: { authorization: 'Bearer valid-token' },
+      });
+
+      assert.strictEqual(appServiceExecuted, true);
+      assert.strictEqual(response.status, 200);
+      assert.strictEqual(response.headers['x-execution-time'], '12ms');
+      assert.deepStrictEqual(response.body, { userId: '42', username: 'alice' });
+
+      assert.deepStrictEqual(auditTrail, ['timing:enter', 'auth:check', 'timing:exit']);
+
+      await manager.stop();
+    },
+  );
+
+  // =========================================================================
+  // 19. MIDDLEWARE SHORT-CIRCUIT
+  // =========================================================================
+  await t.test(
+    '19. Middleware short-circuit: Early response returned without invoking application layer',
+    async () => {
+      let appInvoked = false;
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('secret.data', {
+        async execute() {
+          appInvoked = true;
+          return { confidential: 'data' };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/api/secret', 'secret.data');
+
+      // Security middleware that short-circuits on missing auth header
+      router.use({
+        id: 'auth-guard',
+        execute: async (ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+          if (!ctx.request.headers['authorization']) {
+            return {
+              status: 401,
+              headers: { 'www-authenticate': 'Bearer' },
+              body: { error: 'Unauthorized: missing authorization header' },
+            };
+          }
+          return next();
+        },
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const unauthResponse = await manager.handleRoutedRequest({
+        method: 'GET',
+        url: '/api/secret',
+        path: '/api/secret',
+        headers: {}, // No auth header
+      });
+
+      assert.strictEqual(appInvoked, false); // Application was NOT invoked
+      assert.strictEqual(unauthResponse.status, 401);
+      assert.strictEqual(unauthResponse.headers['www-authenticate'], 'Bearer');
+      assert.deepStrictEqual(unauthResponse.body, {
+        error: 'Unauthorized: missing authorization header',
+      });
+
+      await manager.stop();
+    },
+  );
+
+  // =========================================================================
+  // 20. EXECUTION CONTEXT PRESERVATION
+  // =========================================================================
+  await t.test(
+    '20. ExecutionContext identity is preserved across Router -> Middleware -> Application',
+    async () => {
+      let observedExecutionId = '';
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('test.context', {
+        async execute(_input: unknown, ctx?: ExecutionContext) {
+          observedExecutionId = ctx?.executionId ?? '';
+          return { ok: true };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/api/context-test', 'test.context');
+
+      let mwObservedExecutionId = '';
+      router.use({
+        id: 'context-verifier',
+        execute: async (ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+          mwObservedExecutionId = ctx.executionContext.executionId;
+          return next();
+        },
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const customContext = {
+        executionId: 'req-abc-123',
+        state: 'ACTIVE',
+        metadata: { correlationId: 'corr-12345' },
+        createdAt: Date.now(),
+        signal: new AbortController().signal,
+        start: () => {},
+        complete: () => {},
+        fail: () => {},
+        cancel: () => {},
+        child: () => customContext,
+      } as unknown as ExecutionContext;
+
+      await manager.handleRoutedRequest(
+        {
+          method: 'GET',
+          url: '/api/context-test',
+          path: '/api/context-test',
+          headers: {},
+        },
+        { context: customContext },
+      );
+
+      assert.strictEqual(mwObservedExecutionId, 'req-abc-123');
+      assert.strictEqual(observedExecutionId, 'req-abc-123');
+
+      await manager.stop();
+    },
+  );
+
+  // =========================================================================
+  // 21. ERROR BOUNDARY INTEGRATION
+  // =========================================================================
+  await t.test(
+    '21. Middleware error propagates into HTTP error boundary without unhandled crash',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('failing.service', {
+        async execute() {
+          return { ok: true };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/api/crash', 'failing.service');
+
+      router.use({
+        id: 'broken-mw',
+        execute: async () => {
+          throw new Error('Unexpected middleware crash');
+        },
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const response = await manager.handleRoutedRequest({
+        method: 'GET',
+        url: '/api/crash',
+        path: '/api/crash',
+        headers: {},
+      });
+
+      assert.strictEqual(response.status, 500);
+      assert.ok(response.body);
+
+      await manager.stop();
+    },
+  );
+
+  // =========================================================================
+  // 22. DIRECT PIPELINE & ROUTING COORDINATOR INTEGRATION
+  // =========================================================================
+  await t.test(
+    '22. HttpRoutingCoordinator & HttpMiddlewarePipeline: Direct coordinator integration',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('items.list', {
+        async execute() {
+          return [{ id: 'item-1', name: 'Hammer' }];
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/items', 'items.list');
+
+      const pipeline = new HttpMiddlewarePipeline(router.middlewareCoordinator);
+      assert.ok(pipeline instanceof HttpMiddlewarePipeline);
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withMiddleware({
+          id: 'fluent-mw',
+          execute: async (_ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+            const res = (await next()) as HttpResponse;
+            return {
+              ...res,
+              headers: { ...res.headers, 'x-fluent': 'applied' },
+            };
+          },
+        })
+        .withAutoStart(true)
+        .build();
+
+      assert.ok(manager instanceof HttpTransportManager);
+      assert.ok(manager.routingCoordinator instanceof HttpRoutingCoordinator);
+
+      const res = await manager.handleRoutedRequest({
+        method: 'GET',
+        url: '/items',
+        path: '/items',
+        headers: {},
+      });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.headers['x-fluent'], 'applied');
+
+      const diag = manager.getMiddlewareDiagnostics();
+      assert.ok(diag);
+      assert.strictEqual(diag.successfulExecutions, 1);
+
+      await manager.stop();
     },
   );
 });

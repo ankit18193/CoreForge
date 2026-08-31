@@ -13,6 +13,7 @@ import { HttpMethodNotAllowedError, HttpRouteNotFoundError } from '../errors/Htt
 import { HttpExecutionCoordinator } from '../execution/HttpExecutionCoordinator';
 import { HttpRoutingProfiler } from '../internal/HttpRoutingProfiler';
 import { HttpLifecycleManager } from '../lifecycle/HttpLifecycleManager';
+import { HttpMiddlewarePipeline } from '../middleware/HttpMiddlewarePipeline';
 import { HttpRequestSnapshot } from '../request/HttpRequestSnapshot';
 import { HttpRequestValidator } from '../request/HttpRequestValidator';
 import { HttpResponseFactory } from '../response/HttpResponseFactory';
@@ -23,6 +24,7 @@ export class HttpRoutingCoordinator {
   private readonly _diagnostics: HttpRoutingDiagnostics;
   private readonly _router: HttpRouter;
   private readonly _executionCoordinator: HttpExecutionCoordinator;
+  private readonly _middlewarePipeline: HttpMiddlewarePipeline;
   private readonly _errorMappingOptions: HttpErrorMappingOptions;
 
   constructor(
@@ -31,12 +33,16 @@ export class HttpRoutingCoordinator {
     router: HttpRouter,
     executionCoordinator: HttpExecutionCoordinator,
     errorMappingOptions: HttpErrorMappingOptions = {},
+    middlewarePipeline?: HttpMiddlewarePipeline,
   ) {
     this._lifecycle = lifecycle;
     this._diagnostics = diagnostics;
     this._router = router;
     this._executionCoordinator = executionCoordinator;
     this._errorMappingOptions = errorMappingOptions;
+    this._middlewarePipeline =
+      middlewarePipeline ??
+      new HttpMiddlewarePipeline(router.middlewareCoordinator, errorMappingOptions);
   }
 
   public get router(): HttpRouter {
@@ -45,6 +51,10 @@ export class HttpRoutingCoordinator {
 
   public get diagnostics(): HttpRoutingDiagnostics {
     return this._diagnostics;
+  }
+
+  public get middlewarePipeline(): HttpMiddlewarePipeline {
+    return this._middlewarePipeline;
   }
 
   public getDiagnostics(): HttpRoutingDiagnosticsSnapshot {
@@ -123,37 +133,12 @@ export class HttpRoutingCoordinator {
     const durationMs = profiler.stop();
     this._diagnostics.recordResolutionSuccess(durationMs);
 
-    // 4. Construct Immutable Routed Execution Input (Zero body mutation)
-    // Wrap operation payload for Transport / ApplicationIntegration
-    const routedPayload = {
-      serviceName: match.operation,
-      input: {
-        parameters: match.parameters,
-        query: snapshot.query ?? {},
-        headers: snapshot.headers,
-        body: snapshot.body,
-      },
-    };
-
-    const routedRequest: HttpRequest = {
-      method: snapshot.method,
-      url: snapshot.url,
-      path: snapshot.path,
-      headers: snapshot.headers,
-      query: snapshot.query,
-      pathParameters: match.parameters,
-      cookies: snapshot.cookies,
-      body: routedPayload,
-      metadata: {
-        ...(snapshot.metadata || {}),
-        routeId: match.routeId,
-        operation: match.operation,
-        routeMetadata: match.metadata,
-      },
-      signal: snapshot.signal,
-    };
-
-    // 5. Delegate to canonical HTTP Execution Coordinator
-    return this._executionCoordinator.execute<unknown, TRes>(routedRequest, options);
+    // 4. Delegate to canonical HTTP Middleware Pipeline & Execution Coordinator
+    return this._middlewarePipeline.execute<TReq, TRes>(
+      snapshot,
+      match,
+      (routedRequest) => this._executionCoordinator.execute<unknown, TRes>(routedRequest, options),
+      options,
+    );
   }
 }

@@ -1,5 +1,8 @@
 import {
   HttpDiagnosticsSnapshot,
+  HttpMiddleware,
+  HttpMiddlewareDiagnosticsSnapshot,
+  HttpMiddlewareOptions,
   HttpRequest,
   HttpResponse,
   HttpRoutingDiagnosticsSnapshot,
@@ -106,6 +109,16 @@ export class HttpTransportManager {
     return this._routingCoordinator;
   }
 
+  public use<TContext = unknown, TResult = unknown>(
+    middleware: HttpMiddleware<TContext, TResult>,
+    options?: HttpMiddlewareOptions,
+  ): this {
+    if (this._router) {
+      this._router.use(middleware, options);
+    }
+    return this;
+  }
+
   public startSync(): void {
     if (this._transportManager.state === 'CREATED') {
       (this._transportManager as TransportManager).startSync?.();
@@ -152,8 +165,13 @@ export class HttpTransportManager {
     return this._routingDiagnostics.getSnapshot();
   }
 
+  public getMiddlewareDiagnostics(): HttpMiddlewareDiagnosticsSnapshot | undefined {
+    return this._routingCoordinator?.middlewarePipeline.diagnostics;
+  }
+
   public resetDiagnostics(): void {
     this._diagnostics.reset();
     this._routingDiagnostics.reset();
+    this._routingCoordinator?.middlewarePipeline.resetDiagnostics();
   }
 }

@@ -63,3 +63,4 @@ export * from './internal/HttpMiddlewareProfiler';
 export * from './diagnostics/HttpMiddlewareDiagnostics';
 export * from './middleware/HttpMiddlewareExecutor';
 export * from './middleware/HttpMiddlewareCoordinator';
+export * from './middleware/HttpMiddlewarePipeline';
