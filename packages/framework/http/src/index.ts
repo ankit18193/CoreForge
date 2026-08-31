@@ -59,3 +59,7 @@ export * from './middleware/HttpMiddlewareValidator';
 export * from './middleware/HttpMiddlewareSnapshot';
 export * from './middleware/HttpMiddlewareRegistry';
 export * from './middleware/HttpMiddlewareResolver';
+export * from './internal/HttpMiddlewareProfiler';
+export * from './diagnostics/HttpMiddlewareDiagnostics';
+export * from './middleware/HttpMiddlewareExecutor';
+export * from './middleware/HttpMiddlewareCoordinator';

@@ -24,10 +24,14 @@ import {
   HttpError,
   HttpMiddlewareCancellationError,
   HttpMiddlewareConfigurationError,
+  HttpMiddlewareCoordinator,
+  HttpMiddlewareDiagnostics,
   HttpMiddlewareDuplicateError,
   HttpMiddlewareError,
   HttpMiddlewareExecutionError,
+  HttpMiddlewareExecutor,
   HttpMiddlewarePipelineError,
+  HttpMiddlewareProfiler,
   HttpMiddlewareRegistrationError,
   HttpMiddlewareRegistry,
   HttpMiddlewareResolver,
@@ -38,7 +42,7 @@ import {
   HttpMiddlewareValidator,
 } from '../src/index';
 
-test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1 & 2: Middleware Contracts, Registry & Resolver', async (t) => {
+test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1, 2, 3: Middleware Execution & Reverse Unwinding', async (t) => {
   // =========================================================================
   // 1. CONTRACTS & TYPES
   // =========================================================================
@@ -616,6 +620,578 @@ test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1 & 2: Middle
           );
         }
       }
+    },
+  );
+
+  // =========================================================================
+  // 9. ONION MODEL & REVERSE UNWINDING
+  // =========================================================================
+  await t.test(
+    '9. HttpMiddlewareExecutor: Classic onion model execution (A -> B -> C -> target -> C -> B -> A)',
+    async () => {
+      const coordinator = new HttpMiddlewareCoordinator();
+      const trail: string[] = [];
+
+      coordinator.register(
+        {
+          id: 'mw-a',
+          priority: 100,
+          execute: async (_ctx, next) => {
+            trail.push('A:enter');
+            const res = await next();
+            trail.push('A:exit');
+            return res;
+          },
+        },
+        { priority: 100 },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-b',
+          priority: 50,
+          execute: async (_ctx, next) => {
+            trail.push('B:enter');
+            const res = await next();
+            trail.push('B:exit');
+            return res;
+          },
+        },
+        { priority: 50 },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-c',
+          priority: 10,
+          execute: async (_ctx, next) => {
+            trail.push('C:enter');
+            const res = await next();
+            trail.push('C:exit');
+            return res;
+          },
+        },
+        { priority: 10 },
+      );
+
+      const context: HttpMiddlewareContext = {
+        request: {
+          method: 'GET',
+          url: '/api/items',
+          path: '/api/items',
+          headers: {},
+        },
+        parameters: {},
+        executionContext: {
+          id: 'exec-1',
+          traceId: 'tr-1',
+          correlationId: 'cr-1',
+          startTime: Date.now(),
+          signal: new AbortController().signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      const outcome = await coordinator.execute(context, async (_ctx) => {
+        trail.push('target:execute');
+        return { success: true, count: 42 };
+      });
+
+      assert.deepStrictEqual(trail, [
+        'A:enter',
+        'B:enter',
+        'C:enter',
+        'target:execute',
+        'C:exit',
+        'B:exit',
+        'A:exit',
+      ]);
+
+      assert.deepStrictEqual(outcome.result, { success: true, count: 42 });
+      assert.strictEqual(outcome.batch.totalMiddleware, 3);
+      assert.strictEqual(outcome.batch.executedMiddleware, 3);
+      assert.strictEqual(outcome.batch.failedMiddleware, 0);
+      assert.strictEqual(outcome.batch.success, true);
+    },
+  );
+
+  // =========================================================================
+  // 10. FAILURE STRATEGY: FAIL_FAST
+  // =========================================================================
+  await t.test(
+    '10. HttpMiddlewareExecutor: FAIL_FAST terminates immediately upon failure',
+    async () => {
+      const coordinator = new HttpMiddlewareCoordinator();
+      const trail: string[] = [];
+
+      coordinator.register(
+        {
+          id: 'mw-1',
+          execute: async (_ctx, next) => {
+            trail.push('mw-1:enter');
+            const res = await next();
+            trail.push('mw-1:exit');
+            return res;
+          },
+        },
+        { priority: 100, failureStrategy: 'FAIL_FAST' },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-2',
+          execute: async () => {
+            trail.push('mw-2:throw');
+            throw new Error('Database connection failed');
+          },
+        },
+        { priority: 50, failureStrategy: 'FAIL_FAST' },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-3',
+          execute: async (_ctx, next) => {
+            trail.push('mw-3:enter');
+            return next();
+          },
+        },
+        { priority: 10, failureStrategy: 'FAIL_FAST' },
+      );
+
+      const context: HttpMiddlewareContext = {
+        request: { method: 'GET', url: '/test', path: '/test', headers: {} },
+        parameters: {},
+        executionContext: {
+          id: 'exec-2',
+          traceId: 'tr-2',
+          correlationId: 'cr-2',
+          startTime: Date.now(),
+          signal: new AbortController().signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      await assert.rejects(
+        () => coordinator.execute(context, async () => ({ target: true })),
+        (err: unknown) => {
+          assert.ok(err instanceof HttpMiddlewareExecutionError);
+          assert.strictEqual(err.middlewareId, 'mw-2');
+          return true;
+        },
+      );
+
+      assert.deepStrictEqual(trail, ['mw-1:enter', 'mw-2:throw']);
+    },
+  );
+
+  // =========================================================================
+  // 11. FAILURE STRATEGY: STOP
+  // =========================================================================
+  await t.test(
+    '11. HttpMiddlewareExecutor: STOP skips un-entered downstream middleware',
+    async () => {
+      const coordinator = new HttpMiddlewareCoordinator();
+      const trail: string[] = [];
+
+      coordinator.register(
+        {
+          id: 'mw-1',
+          execute: async (_ctx, next) => {
+            trail.push('mw-1:enter');
+            return next();
+          },
+        },
+        { priority: 100, failureStrategy: 'STOP' },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-2',
+          execute: async () => {
+            trail.push('mw-2:error');
+            throw new Error('Validation failed');
+          },
+        },
+        { priority: 50, failureStrategy: 'STOP' },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-3',
+          execute: async (_ctx, next) => {
+            trail.push('mw-3:never-called');
+            return next();
+          },
+        },
+        { priority: 10, failureStrategy: 'STOP' },
+      );
+
+      const context: HttpMiddlewareContext = {
+        request: { method: 'GET', url: '/stop-test', path: '/stop-test', headers: {} },
+        parameters: {},
+        executionContext: {
+          id: 'exec-3',
+          traceId: 'tr-3',
+          correlationId: 'cr-3',
+          startTime: Date.now(),
+          signal: new AbortController().signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      let caughtError: unknown;
+      try {
+        await coordinator.execute(context, async () => ({ ok: true }));
+      } catch (err: unknown) {
+        caughtError = err;
+      }
+
+      assert.ok(caughtError instanceof HttpMiddlewareExecutionError);
+      assert.deepStrictEqual(trail, ['mw-1:enter', 'mw-2:error']);
+    },
+  );
+
+  // =========================================================================
+  // 12. FAILURE STRATEGY: CONTINUE
+  // =========================================================================
+  await t.test(
+    '12. HttpMiddlewareExecutor: CONTINUE isolates pre-next failure and continues remaining pipeline',
+    async () => {
+      const coordinator = new HttpMiddlewareCoordinator();
+      const trail: string[] = [];
+
+      coordinator.register(
+        {
+          id: 'mw-1',
+          execute: async (_ctx, next) => {
+            trail.push('mw-1:enter');
+            const res = await next();
+            trail.push('mw-1:exit');
+            return res;
+          },
+        },
+        { priority: 100 },
+      );
+
+      // mw-2 throws BEFORE calling next(), but has CONTINUE strategy
+      coordinator.register(
+        {
+          id: 'mw-2',
+          execute: async () => {
+            trail.push('mw-2:isolated-failure');
+            throw new Error('Telemetry service offline');
+          },
+        },
+        { priority: 50, failureStrategy: 'CONTINUE' },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-3',
+          execute: async (_ctx, next) => {
+            trail.push('mw-3:enter');
+            const res = await next();
+            trail.push('mw-3:exit');
+            return res;
+          },
+        },
+        { priority: 10 },
+      );
+
+      const context: HttpMiddlewareContext = {
+        request: { method: 'GET', url: '/continue-test', path: '/continue-test', headers: {} },
+        parameters: {},
+        executionContext: {
+          id: 'exec-4',
+          traceId: 'tr-4',
+          correlationId: 'cr-4',
+          startTime: Date.now(),
+          signal: new AbortController().signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      const outcome = await coordinator.execute(context, async () => {
+        trail.push('target:invoked');
+        return 'success-value';
+      });
+
+      assert.deepStrictEqual(trail, [
+        'mw-1:enter',
+        'mw-2:isolated-failure',
+        'mw-3:enter',
+        'target:invoked',
+        'mw-3:exit',
+        'mw-1:exit',
+      ]);
+
+      assert.strictEqual(outcome.result, 'success-value');
+      assert.strictEqual(outcome.batch.totalMiddleware, 3);
+      assert.strictEqual(outcome.batch.executedMiddleware, 3);
+      assert.strictEqual(outcome.batch.failedMiddleware, 1);
+      assert.strictEqual(outcome.batch.results[1].state, 'FAILED');
+    },
+  );
+
+  // =========================================================================
+  // 13. CANCELLATION HANDLING
+  // =========================================================================
+  await t.test(
+    '13. HttpMiddlewareExecutor: AbortSignal cancellation stops execution and marks CANCELLED',
+    async () => {
+      const coordinator = new HttpMiddlewareCoordinator();
+      const abortController = new AbortController();
+
+      coordinator.register(
+        {
+          id: 'mw-cancel',
+          execute: async (_ctx, next) => {
+            abortController.abort(); // Abort during execution
+            return next();
+          },
+        },
+        { priority: 100 },
+      );
+
+      coordinator.register(
+        {
+          id: 'mw-downstream',
+          execute: async (_ctx, next) => next(),
+        },
+        { priority: 50 },
+      );
+
+      const context: HttpMiddlewareContext = {
+        request: { method: 'GET', url: '/abort', path: '/abort', headers: {} },
+        parameters: {},
+        executionContext: {
+          id: 'exec-5',
+          traceId: 'tr-5',
+          correlationId: 'cr-5',
+          startTime: Date.now(),
+          signal: abortController.signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      await assert.rejects(
+        () => coordinator.execute(context, async () => ({ cancelled: false })),
+        (err: unknown) => {
+          assert.ok(err instanceof HttpMiddlewareCancellationError);
+          return true;
+        },
+      );
+    },
+  );
+
+  // =========================================================================
+  // 14. TIMEOUT HANDLING
+  // =========================================================================
+  await t.test(
+    '14. HttpMiddlewareExecutor: Configurable timeout rejects with HttpMiddlewareTimeoutError and cleans up',
+    async () => {
+      const coordinator = new HttpMiddlewareCoordinator();
+
+      coordinator.register(
+        {
+          id: 'mw-slow',
+          execute: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            return { slow: true };
+          },
+        },
+        { priority: 100, timeoutMs: 30 }, // 30ms timeout
+      );
+
+      const context: HttpMiddlewareContext = {
+        request: { method: 'GET', url: '/timeout', path: '/timeout', headers: {} },
+        parameters: {},
+        executionContext: {
+          id: 'exec-6',
+          traceId: 'tr-6',
+          correlationId: 'cr-6',
+          startTime: Date.now(),
+          signal: new AbortController().signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      await assert.rejects(
+        () => coordinator.execute(context, async () => ({ ok: true })),
+        (err: unknown) => {
+          assert.ok(err instanceof HttpMiddlewareTimeoutError);
+          assert.strictEqual((err as HttpMiddlewareTimeoutError).middlewareId, 'mw-slow');
+          assert.strictEqual((err as HttpMiddlewareTimeoutError).timeoutMs, 30);
+          return true;
+        },
+      );
+
+      // Verify active executions returned to 0
+      const diagnostics = coordinator.getDiagnostics();
+      assert.strictEqual(diagnostics.activeExecutions, 0);
+      assert.strictEqual(diagnostics.failedExecutions, 1);
+    },
+  );
+
+  // =========================================================================
+  // 15. EXACTLY-ONCE INVOCATION
+  // =========================================================================
+  await t.test(
+    '15. HttpMiddlewareExecutor: Multiple next() calls trigger HttpMiddlewareExecutionError',
+    async () => {
+      const coordinator = new HttpMiddlewareCoordinator();
+
+      coordinator.register(
+        {
+          id: 'mw-double-next',
+          execute: async (_ctx, next) => {
+            await next();
+            return next(); // Second call must throw
+          },
+        },
+        { priority: 100 },
+      );
+
+      const context: HttpMiddlewareContext = {
+        request: { method: 'GET', url: '/double-next', path: '/double-next', headers: {} },
+        parameters: {},
+        executionContext: {
+          id: 'exec-7',
+          traceId: 'tr-7',
+          correlationId: 'cr-7',
+          startTime: Date.now(),
+          signal: new AbortController().signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      await assert.rejects(
+        () => coordinator.execute(context, async () => 'target-res'),
+        (err: unknown) => {
+          assert.ok(err instanceof HttpMiddlewareExecutionError);
+          assert.ok((err as Error).message.includes('next() was called multiple times'));
+          return true;
+        },
+      );
+    },
+  );
+
+  // =========================================================================
+  // 16. DIAGNOSTICS & PROFILING
+  // =========================================================================
+  await t.test(
+    '16. HttpMiddlewareDiagnostics & Profiler: Pure numerical tracking and snapshot reset',
+    async () => {
+      const diagnostics = new HttpMiddlewareDiagnostics();
+      const profiler = new HttpMiddlewareProfiler().start();
+
+      diagnostics.recordExecutionStarted();
+      const elapsed = profiler.stop();
+      assert.ok(elapsed >= 0);
+
+      diagnostics.recordExecutionSuccess(elapsed);
+      diagnostics.recordRegistrationFailure();
+      diagnostics.recordExecutionSkipped();
+
+      const snapshot = diagnostics.getSnapshot();
+      assert.ok(Object.isFrozen(snapshot));
+      assert.strictEqual(snapshot.totalExecutions, 1);
+      assert.strictEqual(snapshot.successfulExecutions, 1);
+      assert.strictEqual(snapshot.failedExecutions, 0);
+      assert.strictEqual(snapshot.registrationFailures, 1);
+      assert.strictEqual(snapshot.skippedExecutions, 1);
+      assert.strictEqual(snapshot.activeExecutions, 0);
+
+      diagnostics.reset();
+      const resetSnapshot = diagnostics.getSnapshot();
+      assert.strictEqual(resetSnapshot.totalExecutions, 0);
+      assert.strictEqual(resetSnapshot.successfulExecutions, 0);
+      assert.strictEqual(resetSnapshot.registrationFailures, 0);
+    },
+  );
+
+  // =========================================================================
+  // 17. DIRECT EXECUTOR INVOCATION & SHORT-CIRCUIT
+  // =========================================================================
+  await t.test(
+    '17. HttpMiddlewareExecutor: Direct invocation and short-circuit without invoking target',
+    async () => {
+      const diagnostics = new HttpMiddlewareDiagnostics();
+      const executor = new HttpMiddlewareExecutor(diagnostics);
+      let targetInvoked = false;
+
+      const entries = [
+        {
+          middleware: {
+            id: 'short-circuit-mw',
+            execute: async () => {
+              // Does NOT call next(), returns early response
+              return { shortCircuited: true };
+            },
+          },
+          priority: 100,
+          enabled: true,
+          failureStrategy: 'FAIL_FAST' as const,
+          sequence: 1,
+        },
+      ];
+
+      const context: HttpMiddlewareContext = {
+        request: { method: 'GET', url: '/short', path: '/short', headers: {} },
+        parameters: {},
+        executionContext: {
+          id: 'exec-8',
+          traceId: 'tr-8',
+          correlationId: 'cr-8',
+          startTime: Date.now(),
+          signal: new AbortController().signal,
+          metadata: {},
+          get: () => undefined,
+          set: () => {},
+          has: () => false,
+        } as unknown as ExecutionContext,
+        metadata: {},
+      };
+
+      const outcome = await executor.execute(context, entries, async () => {
+        targetInvoked = true;
+        return { target: true };
+      });
+
+      assert.strictEqual(targetInvoked, false);
+      assert.deepStrictEqual(outcome.result, { shortCircuited: true });
+      assert.strictEqual(outcome.batch.totalMiddleware, 1);
+      assert.strictEqual(outcome.batch.executedMiddleware, 1);
+      assert.strictEqual(outcome.batch.success, true);
     },
   );
 });
