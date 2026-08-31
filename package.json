@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "clean": "tsc -b --clean && rimraf packages/foundation/*/dist packages/framework/*/dist apps/*/dist",
+    "clean": "tsc -b --clean && rimraf -g \"packages/foundation/*/dist\" \"packages/framework/*/dist\" \"apps/*/dist\" \"packages/*/*/tsconfig.tsbuildinfo\" \"tsconfig.tsbuildinfo\"",
     "dev": "tsc -b -w",
     "lint": "eslint \"**/*.ts\" --max-warnings 0",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",

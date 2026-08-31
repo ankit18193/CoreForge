@@ -21,7 +21,7 @@ import {
   PropertyInjection,
   ProviderNotFoundError,
   ScopeError,
-} from '../index';
+} from '../src/index';
 
 test('CoreForge Dependency Injection & Runtime Container Package (@coreforge/di)', async (t) => {
   await t.test('1. Class, value, and factory provider registration and resolution', async () => {
