@@ -19,6 +19,7 @@ import {
   HttpControllerError,
   HttpControllerExecutionError,
   HttpControllerExecutor,
+  HttpControllerPipeline,
   HttpControllerProfiler,
   HttpControllerRegistrationError,
   HttpControllerRegistry,
@@ -36,6 +37,11 @@ import {
   HttpEndpointResolver,
   HttpEndpointValidationError,
   HttpError,
+  HttpExecutionCoordinator,
+  HttpLifecycleManager,
+  HttpRouter,
+  HttpRoutingCoordinator,
+  HttpRoutingDiagnostics,
 } from '../src/index';
 
 test('CoreForge HTTP Controller & Endpoint Infrastructure (@coreforge/http)', async (t) => {
@@ -917,4 +923,365 @@ test('CoreForge HTTP Controller & Endpoint Infrastructure (@coreforge/http)', as
     assert.strictEqual(diag.successfulExecutions, count);
     assert.strictEqual(diag.activeExecutions, 0);
   });
+
+  // ─── 14. Stage 4 Pipeline Integration ──────────────────────────────────────
+
+  await t.test('14a. Pipeline Integration: Route -> Endpoint -> Controller execution', async () => {
+    const router = new HttpRouter();
+    router.get('/users/:id', 'users.get', { metadata: { id: 'users.get.route' } });
+
+    router.registerController({
+      id: 'user.controller',
+      name: 'UserController',
+      execute: async (ctx) => ({
+        userId: ctx.parameters['id'],
+        source: 'UserController',
+      }),
+    });
+
+    router.registerEndpoint({
+      id: 'user.get.endpoint',
+      name: 'GetUserEndpoint',
+      routeId: 'users.get.route',
+      operation: 'users.get',
+      controllerId: 'user.controller',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    });
+
+    const lifecycle = new HttpLifecycleManager();
+    lifecycle.start();
+    const routingDiag = new HttpRoutingDiagnostics();
+
+    // Mock execution coordinator that mirrors payload
+    const mockExecCoord = {
+      execute: async (req: import('@coreforge/contracts').HttpRequest) => ({
+        status: 200,
+        headers: {},
+        body: req.body,
+      }),
+    } as unknown as HttpExecutionCoordinator;
+
+    const coordinator = new HttpRoutingCoordinator(lifecycle, routingDiag, router, mockExecCoord);
+
+    const res = await coordinator.execute({
+      method: 'GET',
+      url: '/users/123',
+      path: '/users/123',
+      headers: {},
+      query: {},
+    });
+
+    assert.strictEqual(res.status, 200);
+    const body = res.body as { serviceName: string; input: { userId: string; source: string } };
+    assert.strictEqual(body.serviceName, 'users.get');
+    assert.strictEqual(body.input.userId, '123');
+    assert.strictEqual(body.input.source, 'UserController');
+  });
+
+  await t.test(
+    '14b. Pipeline Integration: Middleware + Controller onion ordering and reverse unwinding',
+    async () => {
+      const order: string[] = [];
+      const router = new HttpRouter();
+      router.get('/order', 'order.op', { metadata: { id: 'order.route' } });
+
+      // Middleware A
+      router.use({
+        id: 'mw.a',
+        execute: async (_ctx, next) => {
+          order.push('MW_A_IN');
+          const res = await next();
+          order.push('MW_A_OUT');
+          return res;
+        },
+      });
+
+      // Middleware B
+      router.use({
+        id: 'mw.b',
+        execute: async (_ctx, next) => {
+          order.push('MW_B_IN');
+          const res = await next();
+          order.push('MW_B_OUT');
+          return res;
+        },
+      });
+
+      // Controller
+      router.registerController({
+        id: 'order.ctrl',
+        name: 'OrderCtrl',
+        execute: async () => {
+          order.push('CONTROLLER');
+          return { data: 'ok' };
+        },
+      });
+
+      router.registerEndpoint({
+        id: 'order.ep',
+        name: 'OrderEp',
+        routeId: 'order.route',
+        operation: 'order.op',
+        controllerId: 'order.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const lifecycle = new HttpLifecycleManager();
+      lifecycle.start();
+      const mockExecCoord = {
+        execute: async (req: import('@coreforge/contracts').HttpRequest) => {
+          order.push('APPLICATION');
+          return { status: 200, headers: {}, body: req.body };
+        },
+      } as unknown as HttpExecutionCoordinator;
+
+      const coordinator = new HttpRoutingCoordinator(
+        lifecycle,
+        new HttpRoutingDiagnostics(),
+        router,
+        mockExecCoord,
+      );
+
+      const res = await coordinator.execute({
+        method: 'GET',
+        url: '/order',
+        path: '/order',
+        headers: {},
+        query: {},
+      });
+
+      assert.strictEqual(res.status, 200);
+      assert.deepStrictEqual(order, [
+        'MW_A_IN',
+        'MW_B_IN',
+        'CONTROLLER',
+        'APPLICATION',
+        'MW_B_OUT',
+        'MW_A_OUT',
+      ]);
+    },
+  );
+
+  await t.test(
+    '14c. Pipeline Integration: Middleware short-circuit prevents controller execution',
+    async () => {
+      let controllerInvoked = false;
+      let applicationInvoked = false;
+
+      const router = new HttpRouter();
+      router.get('/short-circuit', 'sc.op', { metadata: { id: 'sc.route' } });
+
+      // Short-circuiting middleware (e.g. auth check failing)
+      router.use({
+        id: 'mw.auth',
+        execute: async () => ({
+          status: 401,
+          headers: { 'www-authenticate': 'Bearer' },
+          body: { error: 'Unauthorized' },
+        }),
+      });
+
+      router.registerController({
+        id: 'sc.ctrl',
+        name: 'ScCtrl',
+        execute: async () => {
+          controllerInvoked = true;
+          return { secret: 'data' };
+        },
+      });
+
+      router.registerEndpoint({
+        id: 'sc.ep',
+        name: 'ScEp',
+        routeId: 'sc.route',
+        operation: 'sc.op',
+        controllerId: 'sc.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const lifecycle = new HttpLifecycleManager();
+      lifecycle.start();
+      const mockExecCoord = {
+        execute: async () => {
+          applicationInvoked = true;
+          return { status: 200, headers: {}, body: {} };
+        },
+      } as unknown as HttpExecutionCoordinator;
+
+      const coordinator = new HttpRoutingCoordinator(
+        lifecycle,
+        new HttpRoutingDiagnostics(),
+        router,
+        mockExecCoord,
+      );
+
+      const res = await coordinator.execute({
+        method: 'GET',
+        url: '/short-circuit',
+        path: '/short-circuit',
+        headers: {},
+        query: {},
+      });
+
+      assert.strictEqual(res.status, 401);
+      assert.strictEqual(
+        controllerInvoked,
+        false,
+        'Controller must NOT be executed on short-circuit',
+      );
+      assert.strictEqual(
+        applicationInvoked,
+        false,
+        'Application must NOT be executed on short-circuit',
+      );
+    },
+  );
+
+  await t.test(
+    '14d. Pipeline Integration: preserves same ExecutionContext through pipeline',
+    async () => {
+      let mwExecContextId = '';
+      let ctrlExecContextId = '';
+
+      const router = new HttpRouter();
+      router.get('/context', 'ctx.op', { metadata: { id: 'ctx.route' } });
+
+      router.use({
+        id: 'mw.ctx',
+        execute: async (ctx: unknown, next) => {
+          const mwCtx = ctx as { executionContext: ExecutionContext & { id?: string } };
+          mwExecContextId = mwCtx.executionContext.id ?? '';
+          return next();
+        },
+      });
+
+      router.registerController({
+        id: 'ctx.ctrl',
+        name: 'CtxCtrl',
+        execute: async (ctx) => {
+          const ctrlCtx = ctx as HttpControllerContext & { executionContext: { id?: string } };
+          ctrlExecContextId = ctrlCtx.executionContext.id ?? '';
+          return { ok: true };
+        },
+      });
+
+      router.registerEndpoint({
+        id: 'ctx.ep',
+        name: 'CtxEp',
+        routeId: 'ctx.route',
+        operation: 'ctx.op',
+        controllerId: 'ctx.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const lifecycle = new HttpLifecycleManager();
+      lifecycle.start();
+      const mockExecCoord = {
+        execute: async () => ({ status: 200, headers: {}, body: {} }),
+      } as unknown as HttpExecutionCoordinator;
+
+      const coordinator = new HttpRoutingCoordinator(
+        lifecycle,
+        new HttpRoutingDiagnostics(),
+        router,
+        mockExecCoord,
+      );
+
+      const mockSignal = new AbortController().signal;
+      const customExecContext = {
+        id: 'custom-exec-ctx-777',
+        signal: mockSignal,
+        data: new Map(),
+      } as unknown as ExecutionContext;
+
+      await coordinator.execute(
+        {
+          method: 'GET',
+          url: '/context',
+          path: '/context',
+          headers: {},
+          query: {},
+        },
+        {
+          context: customExecContext,
+        } as unknown as import('@coreforge/contracts').HttpRequestOptions,
+      );
+
+      assert.strictEqual(mwExecContextId, 'custom-exec-ctx-777');
+      assert.strictEqual(ctrlExecContextId, 'custom-exec-ctx-777');
+    },
+  );
+
+  await t.test(
+    '14e. HttpControllerPipeline: standalone execution with and without controller',
+    async () => {
+      const coordinator = new HttpControllerCoordinator();
+      coordinator.registerController({
+        id: 'direct.ctrl',
+        name: 'DirectCtrl',
+        execute: async (ctx) => ({ echo: ctx.parameters['val'] }),
+      });
+      coordinator.registerEndpoint({
+        id: 'direct.ep',
+        name: 'DirectEp',
+        routeId: 'direct.route',
+        operation: 'direct.op',
+        controllerId: 'direct.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const pipeline = new HttpControllerPipeline(coordinator);
+
+      // With endpoint & controller
+      const resWithCtrl = await pipeline.execute(
+        {
+          method: 'GET',
+          url: '/test/hello',
+          path: '/test/hello',
+          headers: {},
+          query: {},
+        },
+        {
+          routeId: 'direct.route',
+          method: 'GET',
+          path: '/test/:val',
+          operation: 'direct.op',
+          parameters: { val: 'hello' },
+          metadata: {},
+        },
+      );
+      assert.strictEqual(resWithCtrl.status, 200);
+      assert.deepStrictEqual(resWithCtrl.body, { echo: 'hello' });
+
+      // Without endpoint (default fallback)
+      const resNoCtrl = await pipeline.execute(
+        {
+          method: 'GET',
+          url: '/other',
+          path: '/other',
+          headers: {},
+          query: {},
+        },
+        {
+          routeId: 'unbound.route',
+          method: 'GET',
+          path: '/other',
+          operation: 'other.op',
+          parameters: {},
+          metadata: {},
+        },
+      );
+      assert.strictEqual(resNoCtrl.status, 200);
+    },
+  );
 });

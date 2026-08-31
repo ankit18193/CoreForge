@@ -78,3 +78,4 @@ export * from './internal/HttpControllerProfiler';
 export * from './diagnostics/HttpControllerDiagnostics';
 export * from './controller/HttpControllerExecutor';
 export * from './controller/HttpControllerCoordinator';
+export * from './controller/HttpControllerPipeline';

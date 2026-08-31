@@ -8,6 +8,7 @@ import {
 
 import { HttpPathMatcher } from './HttpPathMatcher';
 import { HttpRouter } from './HttpRouter';
+import { HttpControllerPipeline } from '../controller/HttpControllerPipeline';
 import { HttpRoutingDiagnostics } from '../diagnostics/HttpRoutingDiagnostics';
 import { HttpMethodNotAllowedError, HttpRouteNotFoundError } from '../errors/HttpRoutingErrors';
 import { HttpExecutionCoordinator } from '../execution/HttpExecutionCoordinator';
@@ -25,6 +26,7 @@ export class HttpRoutingCoordinator {
   private readonly _router: HttpRouter;
   private readonly _executionCoordinator: HttpExecutionCoordinator;
   private readonly _middlewarePipeline: HttpMiddlewarePipeline;
+  private readonly _controllerPipeline: HttpControllerPipeline;
   private readonly _errorMappingOptions: HttpErrorMappingOptions;
 
   constructor(
@@ -34,6 +36,7 @@ export class HttpRoutingCoordinator {
     executionCoordinator: HttpExecutionCoordinator,
     errorMappingOptions: HttpErrorMappingOptions = {},
     middlewarePipeline?: HttpMiddlewarePipeline,
+    controllerPipeline?: HttpControllerPipeline,
   ) {
     this._lifecycle = lifecycle;
     this._diagnostics = diagnostics;
@@ -43,10 +46,21 @@ export class HttpRoutingCoordinator {
     this._middlewarePipeline =
       middlewarePipeline ??
       new HttpMiddlewarePipeline(router.middlewareCoordinator, errorMappingOptions);
+    this._controllerPipeline =
+      controllerPipeline ??
+      new HttpControllerPipeline(
+        router.controllerCoordinator,
+        executionCoordinator,
+        errorMappingOptions,
+      );
   }
 
   public get router(): HttpRouter {
     return this._router;
+  }
+
+  public get executionCoordinator(): HttpExecutionCoordinator {
+    return this._executionCoordinator;
   }
 
   public get diagnostics(): HttpRoutingDiagnostics {
@@ -55,6 +69,10 @@ export class HttpRoutingCoordinator {
 
   public get middlewarePipeline(): HttpMiddlewarePipeline {
     return this._middlewarePipeline;
+  }
+
+  public get controllerPipeline(): HttpControllerPipeline {
+    return this._controllerPipeline;
   }
 
   public getDiagnostics(): HttpRoutingDiagnosticsSnapshot {
@@ -133,11 +151,12 @@ export class HttpRoutingCoordinator {
     const durationMs = profiler.stop();
     this._diagnostics.recordResolutionSuccess(durationMs);
 
-    // 4. Delegate to canonical HTTP Middleware Pipeline & Execution Coordinator
+    // 4. Delegate to canonical HTTP Middleware Pipeline -> Controller Pipeline -> Execution Coordinator
     return this._middlewarePipeline.execute<TReq, TRes>(
       snapshot,
       match,
-      (routedRequest) => this._executionCoordinator.execute<unknown, TRes>(routedRequest, options),
+      (routedRequest) =>
+        this._controllerPipeline.execute<unknown, TRes>(routedRequest, match, options),
       options,
     );
   }
