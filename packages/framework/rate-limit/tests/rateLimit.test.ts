@@ -365,7 +365,7 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
     const manager = new RateLimiterManager();
     const limiter = manager.limiter({
       limit: 500,
-      windowMs: 1000,
+      windowMs: 60000,
       algorithm: 'FIXED_WINDOW',
     });
 
