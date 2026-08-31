@@ -1654,9 +1654,9 @@ test('CoreForge HTTP Middleware Engine (@coreforge/http) — Complete Integratio
 
       app.applicationManager.register('slow.op', {
         async execute(_input: unknown, ctx?: ExecutionContext) {
-          // Slow operation
+          // Slow operation (500ms vs 50ms timeout)
           await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => resolve(), 200);
+            const timer = setTimeout(() => resolve(), 500);
             if (ctx?.signal) {
               ctx.signal.addEventListener('abort', () => {
                 clearTimeout(timer);

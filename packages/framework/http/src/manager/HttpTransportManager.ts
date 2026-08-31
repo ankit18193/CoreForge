@@ -1,4 +1,5 @@
 import {
+  HttpBindingDiagnosticsSnapshot,
   HttpControllerDiagnosticsSnapshot,
   HttpDiagnosticsSnapshot,
   HttpMiddleware,
@@ -174,10 +175,15 @@ export class HttpTransportManager {
     return this._routingCoordinator?.controllerPipeline.coordinator.getDiagnostics();
   }
 
+  public getBindingDiagnostics(): HttpBindingDiagnosticsSnapshot | undefined {
+    return this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.getDiagnostics();
+  }
+
   public resetDiagnostics(): void {
     this._diagnostics.reset();
     this._routingDiagnostics.reset();
     this._routingCoordinator?.middlewarePipeline.resetDiagnostics();
     this._routingCoordinator?.controllerPipeline.coordinator.resetDiagnostics();
+    this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.resetDiagnostics();
   }
 }

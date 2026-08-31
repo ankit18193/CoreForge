@@ -147,6 +147,33 @@ export class HttpTransportBuilder {
     );
   }
 
+  public withBinding(
+    planId: string,
+    definitionsOrPlan:
+      | readonly import('@coreforge/contracts').HttpBindingDefinition[]
+      | import('../binding/HttpBindingPlan').HttpBindingPlan,
+  ): HttpTransportBuilder {
+    const router = this._router ?? new HttpRouter();
+    router.registerBinding(planId, definitionsOrPlan);
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      router,
+    );
+  }
+
+  public withBindingPlan(
+    planId: string,
+    definitionsOrPlan:
+      | readonly import('@coreforge/contracts').HttpBindingDefinition[]
+      | import('../binding/HttpBindingPlan').HttpBindingPlan,
+  ): HttpTransportBuilder {
+    return this.withBinding(planId, definitionsOrPlan);
+  }
+
   public build(): HttpTransportManager {
     return new HttpTransportManager({
       application: this._application,

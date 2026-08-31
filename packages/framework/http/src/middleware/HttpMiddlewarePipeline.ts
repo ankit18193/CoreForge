@@ -123,6 +123,30 @@ export class HttpMiddlewarePipeline {
       );
 
       // 5. Short-circuit / Response Adaptation
+      if (!outcome.batch.success) {
+        if (outcome.batch.cancelledMiddleware > 0) {
+          const cancelStatus =
+            this._errorMappingOptions.cancellationStatus ?? HTTP_STATUS_CODES.CLIENT_CLOSED_REQUEST;
+          return HttpResponseFactory.createFailure<TRes>(
+            cancelStatus,
+            new Error('Middleware execution was cancelled'),
+            {},
+            undefined,
+            undefined,
+            this._errorMappingOptions,
+          );
+        }
+
+        return HttpResponseFactory.createFailure<TRes>(
+          HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR,
+          new Error('Middleware execution failed'),
+          {},
+          undefined,
+          undefined,
+          this._errorMappingOptions,
+        );
+      }
+
       const res = outcome.result;
       if (
         res &&

@@ -7,6 +7,7 @@ import type {
   HttpBindingDefinition,
   HttpRequest,
 } from '@coreforge/contracts';
+import { ApplicationIntegrationBuilder } from '@coreforge/integration';
 
 import {
   HttpBindingCoordinator,
@@ -33,6 +34,7 @@ import {
   HttpRouter,
   HttpRoutingCoordinator,
   HttpRoutingDiagnostics,
+  HttpTransportBuilder,
   HttpValidationEngine,
   HttpValueExtractor,
   HttpValueTransformer,
@@ -1003,6 +1005,85 @@ test('CoreForge HTTP Request Binding & Validation Engine (@coreforge/http)', asy
         false,
         'Application must NOT execute when validation fails',
       );
+    },
+  );
+
+  // ─── 14. Transport Builder & Manager Diagnostics E2E ───────────────────────
+
+  await t.test(
+    '14a. HttpTransportBuilder & HttpTransportManager: binding configuration and diagnostics',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('items.create', {
+        async execute(input: unknown) {
+          return {
+            data: 'Processed items.create',
+            input,
+          };
+        },
+      });
+      await app.start();
+
+      const builder = HttpTransportBuilder.create().withApplication(app);
+      const router = new HttpRouter();
+      router.post('/items', 'items.create', { metadata: { id: 'items.create.route' } });
+
+      const manager = builder
+        .withRouter(router)
+        .withBinding('items.create.route', [
+          { source: 'BODY', field: 'name', target: 'itemName', required: true, type: 'STRING' },
+          { source: 'BODY', field: 'quantity', target: 'qty', required: true, type: 'INTEGER' },
+          { source: 'HEADER', field: 'x-tenant', target: 'tenant', defaultValue: 't-default' },
+        ])
+        .build();
+
+      await manager.start();
+
+      // 1. Valid Request
+      const validRes = await manager.handleRoutedRequest({
+        method: 'POST',
+        url: '/items',
+        path: '/items',
+        headers: { 'X-Tenant': 'tenant-100' },
+        body: { name: 'Widget A', quantity: '50' },
+      });
+
+      assert.strictEqual(validRes.status, 200);
+      const body = validRes.body as {
+        data: string;
+        input: { itemName: string; qty: number; tenant: string };
+      };
+      assert.strictEqual(body.input.itemName, 'Widget A');
+      assert.strictEqual(body.input.qty, 50);
+      assert.strictEqual(body.input.tenant, 'tenant-100');
+
+      // 2. Invalid Request (Missing required name + non-integer quantity)
+      const invalidRes = await manager.handleRoutedRequest({
+        method: 'POST',
+        url: '/items',
+        path: '/items',
+        headers: {},
+        body: { quantity: '3.14' },
+      });
+
+      assert.strictEqual(invalidRes.status, 400);
+
+      // 3. Diagnostics Inspection
+      const bindingDiag = manager.getBindingDiagnostics();
+      assert.ok(bindingDiag);
+      assert.strictEqual(bindingDiag.totalBindings, 2);
+      assert.strictEqual(bindingDiag.successfulBindings, 1);
+      assert.strictEqual(bindingDiag.failedBindings, 1);
+      assert.strictEqual(bindingDiag.missingValues, 1);
+      assert.strictEqual(bindingDiag.typeFailures, 1);
+
+      // 4. Reset Diagnostics
+      manager.resetDiagnostics();
+      const resetDiag = manager.getBindingDiagnostics();
+      assert.strictEqual(resetDiag?.totalBindings, 0);
+
+      await manager.stop();
+      await app.stop();
     },
   );
 });

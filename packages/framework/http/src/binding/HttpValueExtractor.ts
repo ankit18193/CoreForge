@@ -80,10 +80,29 @@ export class HttpValueExtractor {
           return undefined;
         }
 
+        // Unwrap if body is a routed request payload from middleware pipeline
+        let actualBody: unknown = request.body;
+        if (
+          typeof actualBody === 'object' &&
+          actualBody !== null &&
+          'serviceName' in actualBody &&
+          'input' in actualBody
+        ) {
+          const inputObj = (actualBody as { input?: { body?: unknown } }).input;
+          actualBody =
+            inputObj && typeof inputObj === 'object' && 'body' in inputObj
+              ? inputObj.body
+              : actualBody;
+        }
+
+        if (actualBody === undefined || actualBody === null) {
+          return undefined;
+        }
+
         // If field is specified and body is an object, extract the field from body
         if (field) {
-          if (typeof request.body === 'object' && !Array.isArray(request.body)) {
-            const bodyObj = request.body as Record<string, unknown>;
+          if (typeof actualBody === 'object' && !Array.isArray(actualBody)) {
+            const bodyObj = actualBody as Record<string, unknown>;
             return Object.prototype.hasOwnProperty.call(bodyObj, field)
               ? bodyObj[field]
               : undefined;
@@ -92,7 +111,7 @@ export class HttpValueExtractor {
         }
 
         // Entire body requested
-        return request.body;
+        return actualBody;
       }
 
       default:
