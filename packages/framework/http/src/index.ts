@@ -57,3 +57,5 @@ export * from './types/httpMiddlewareTypes';
 export * from './errors/HttpMiddlewareErrors';
 export * from './middleware/HttpMiddlewareValidator';
 export * from './middleware/HttpMiddlewareSnapshot';
+export * from './middleware/HttpMiddlewareRegistry';
+export * from './middleware/HttpMiddlewareResolver';

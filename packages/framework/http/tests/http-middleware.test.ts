@@ -29,6 +29,8 @@ import {
   HttpMiddlewareExecutionError,
   HttpMiddlewarePipelineError,
   HttpMiddlewareRegistrationError,
+  HttpMiddlewareRegistry,
+  HttpMiddlewareResolver,
   HttpMiddlewareSnapshot,
   HttpMiddlewareStateError,
   HttpMiddlewareTimeoutError,
@@ -36,7 +38,7 @@ import {
   HttpMiddlewareValidator,
 } from '../src/index';
 
-test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1: Middleware Contracts & Foundation', async (t) => {
+test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1 & 2: Middleware Contracts, Registry & Resolver', async (t) => {
   // =========================================================================
   // 1. CONTRACTS & TYPES
   // =========================================================================
@@ -445,6 +447,175 @@ test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stage 1: Middleware
       assert.ok(Object.isFrozen(batchSnapshot));
       assert.ok(Object.isFrozen(batchSnapshot.results));
       assert.strictEqual(batchSnapshot.totalMiddleware, 1);
+    },
+  );
+
+  // =========================================================================
+  // 5. DETERMINISTIC MIDDLEWARE REGISTRY
+  // =========================================================================
+  await t.test(
+    '5. HttpMiddlewareRegistry: Registration, O(1) retrieval, duplicate prevention, and locking',
+    () => {
+      const registry = new HttpMiddlewareRegistry();
+      assert.strictEqual(registry.size, 0);
+      assert.strictEqual(registry.locked, false);
+
+      const mwA: HttpMiddleware = {
+        id: 'mw-a',
+        priority: 10,
+        execute: (_ctx, next) => next(),
+      };
+      const mwB: HttpMiddleware = {
+        id: 'mw-b',
+        priority: 20,
+        execute: (_ctx, next) => next(),
+      };
+
+      registry.register(mwA);
+      registry.register(mwB, { priority: 25, failureStrategy: 'CONTINUE' });
+
+      assert.strictEqual(registry.size, 2);
+      assert.strictEqual(registry.has('mw-a'), true);
+      assert.strictEqual(registry.has('mw-b'), true);
+      assert.strictEqual(registry.has('mw-nonexistent'), false);
+
+      assert.strictEqual(registry.get('mw-a')?.id, 'mw-a');
+      assert.strictEqual(registry.getEntry('mw-b')?.priority, 25);
+      assert.strictEqual(registry.getEntry('mw-b')?.failureStrategy, 'CONTINUE');
+      assert.strictEqual(registry.getEntry('mw-a')?.sequence, 1);
+      assert.strictEqual(registry.getEntry('mw-b')?.sequence, 2);
+
+      // Duplicate registration rejection
+      assert.throws(
+        () => registry.register({ id: 'mw-a', execute: (_ctx, next) => next() }),
+        HttpMiddlewareDuplicateError,
+      );
+
+      // Locking
+      registry.lock();
+      assert.strictEqual(registry.locked, true);
+
+      assert.throws(
+        () => registry.register({ id: 'mw-c', execute: (_ctx, next) => next() }),
+        HttpMiddlewareRegistrationError,
+      );
+
+      assert.throws(() => registry.clear(), HttpMiddlewareRegistrationError);
+    },
+  );
+
+  // =========================================================================
+  // 6. DETERMINISTIC MIDDLEWARE RESOLVER
+  // =========================================================================
+  await t.test(
+    '6. HttpMiddlewareResolver: Deterministic resolution by priority DESC and registration sequence ASC',
+    () => {
+      const registry = new HttpMiddlewareRegistry();
+
+      // Register out of order
+      // Middleware A: priority 100, sequence 1
+      // Middleware B: priority 50, sequence 2
+      // Middleware C: priority 50, sequence 3
+      // Middleware D: priority 10, sequence 4
+      // Middleware E: priority 150, sequence 5
+      registry.register({ id: 'mw-a', execute: (_ctx, next) => next() }, { priority: 100 });
+      registry.register({ id: 'mw-b', execute: (_ctx, next) => next() }, { priority: 50 });
+      registry.register({ id: 'mw-c', execute: (_ctx, next) => next() }, { priority: 50 });
+      registry.register({ id: 'mw-d', execute: (_ctx, next) => next() }, { priority: 10 });
+      registry.register({ id: 'mw-e', execute: (_ctx, next) => next() }, { priority: 150 });
+
+      const resolver = new HttpMiddlewareResolver(registry);
+      const resolved = resolver.resolve();
+
+      assert.strictEqual(resolved.length, 5);
+      // Expected order: E (150) -> A (100) -> B (50, seq 2) -> C (50, seq 3) -> D (10)
+      assert.strictEqual(resolved[0].id, 'mw-e');
+      assert.strictEqual(resolved[1].id, 'mw-a');
+      assert.strictEqual(resolved[2].id, 'mw-b');
+      assert.strictEqual(resolved[3].id, 'mw-c');
+      assert.strictEqual(resolved[4].id, 'mw-d');
+
+      const resolvedEntries = resolver.resolveEntries();
+      assert.strictEqual(resolvedEntries[0].priority, 150);
+      assert.strictEqual(resolvedEntries[2].sequence, 2);
+      assert.strictEqual(resolvedEntries[3].sequence, 3);
+    },
+  );
+
+  // =========================================================================
+  // 7. RESOLVER DISABLED FILTERING
+  // =========================================================================
+  await t.test(
+    '7. HttpMiddlewareResolver: Filter out disabled middleware during resolution',
+    () => {
+      const registry = new HttpMiddlewareRegistry();
+
+      registry.register({ id: 'mw-1', execute: (_ctx, next) => next() }, { priority: 100 });
+      registry.register(
+        { id: 'mw-2', execute: (_ctx, next) => next() },
+        { priority: 80, enabled: false },
+      );
+      registry.register({ id: 'mw-3', execute: (_ctx, next) => next() }, { priority: 60 });
+
+      const resolver = new HttpMiddlewareResolver(registry);
+      const resolved = resolver.resolve();
+
+      assert.strictEqual(resolved.length, 2);
+      assert.strictEqual(resolved[0].id, 'mw-1');
+      assert.strictEqual(resolved[1].id, 'mw-3');
+    },
+  );
+
+  // =========================================================================
+  // 8. REGISTRY IMMUTABILITY & CONCURRENCY
+  // =========================================================================
+  await t.test(
+    '8. HttpMiddlewareRegistry: Immutable list snapshots and concurrent registration safety',
+    async () => {
+      const registry = new HttpMiddlewareRegistry();
+
+      const list1 = registry.list();
+      assert.ok(Object.isFrozen(list1));
+      assert.strictEqual(list1.length, 0);
+
+      // Concurrent registration of 100 middleware
+      const promises = Array.from({ length: 100 }, (_, i) => {
+        return Promise.resolve().then(() => {
+          registry.register(
+            {
+              id: `concurrent-mw-${i}`,
+              execute: (_ctx, next) => next(),
+            },
+            { priority: i % 10 },
+          );
+        });
+      });
+
+      await Promise.all(promises);
+
+      assert.strictEqual(registry.size, 100);
+      const listEntries = registry.listEntries();
+      assert.strictEqual(listEntries.length, 100);
+      assert.ok(Object.isFrozen(listEntries));
+
+      // Test resolver on concurrent registrations
+      const resolver = new HttpMiddlewareResolver(registry);
+      const resolved = resolver.resolveEntries();
+      assert.strictEqual(resolved.length, 100);
+
+      // Verify strict priority sorting: priority[i] >= priority[i+1]
+      for (let i = 0; i < resolved.length - 1; i++) {
+        assert.ok(
+          resolved[i].priority >= resolved[i + 1].priority,
+          `Resolution order invariant violated at index ${i}: ${resolved[i].priority} < ${resolved[i + 1].priority}`,
+        );
+        if (resolved[i].priority === resolved[i + 1].priority) {
+          assert.ok(
+            resolved[i].sequence < resolved[i + 1].sequence,
+            `Sequence tie-break invariant violated at index ${i}: ${resolved[i].sequence} >= ${resolved[i + 1].sequence}`,
+          );
+        }
+      }
     },
   );
 });
