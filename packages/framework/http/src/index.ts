@@ -89,3 +89,6 @@ export * from './binding/HttpValueExtractor';
 export * from './binding/HttpBindingPlan';
 export * from './binding/HttpBindingRegistry';
 export * from './binding/HttpBindingResolver';
+export * from './binding/HttpValueTransformer';
+export * from './validation/HttpInputValidator';
+export * from './validation/HttpValidationEngine';

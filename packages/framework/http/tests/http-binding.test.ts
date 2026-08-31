@@ -23,7 +23,10 @@ import {
   HttpBindingValidationError,
   HttpBindingValidator,
   HttpError,
+  HttpInputValidator,
+  HttpValidationEngine,
   HttpValueExtractor,
+  HttpValueTransformer,
 } from '../src/index';
 
 test('CoreForge HTTP Request Binding & Validation Engine (@coreforge/http)', async (t) => {
@@ -511,4 +514,212 @@ test('CoreForge HTTP Request Binding & Validation Engine (@coreforge/http)', asy
       });
     },
   );
+
+  // ─── 8. Type Transformation ─────────────────────────────────────────────────
+
+  await t.test('8a. HttpValueTransformer: transforms strings, numbers, integers, booleans', () => {
+    // STRING
+    assert.strictEqual(HttpValueTransformer.transform(123, 'STRING'), '123');
+    assert.strictEqual(HttpValueTransformer.transform(true, 'STRING'), 'true');
+    assert.strictEqual(HttpValueTransformer.transform('already-str', 'STRING'), 'already-str');
+
+    // NUMBER
+    assert.strictEqual(HttpValueTransformer.transform('42.5', 'NUMBER'), 42.5);
+    assert.strictEqual(HttpValueTransformer.transform(100, 'NUMBER'), 100);
+    assert.strictEqual(HttpValueTransformer.transform(true, 'NUMBER'), 1);
+    assert.strictEqual(HttpValueTransformer.transform(false, 'NUMBER'), 0);
+
+    // INTEGER
+    assert.strictEqual(HttpValueTransformer.transform('42', 'INTEGER'), 42);
+    assert.strictEqual(HttpValueTransformer.transform(10, 'INTEGER'), 10);
+
+    // BOOLEAN
+    assert.strictEqual(HttpValueTransformer.transform('true', 'BOOLEAN'), true);
+    assert.strictEqual(HttpValueTransformer.transform('TRUE', 'BOOLEAN'), true);
+    assert.strictEqual(HttpValueTransformer.transform('1', 'BOOLEAN'), true);
+    assert.strictEqual(HttpValueTransformer.transform('yes', 'BOOLEAN'), true);
+    assert.strictEqual(HttpValueTransformer.transform('on', 'BOOLEAN'), true);
+    assert.strictEqual(HttpValueTransformer.transform('false', 'BOOLEAN'), false);
+    assert.strictEqual(HttpValueTransformer.transform('0', 'BOOLEAN'), false);
+    assert.strictEqual(HttpValueTransformer.transform('no', 'BOOLEAN'), false);
+    assert.strictEqual(HttpValueTransformer.transform('off', 'BOOLEAN'), false);
+  });
+
+  await t.test('8b. HttpValueTransformer: transforms JSON, arrays, and objects', () => {
+    // JSON
+    assert.deepStrictEqual(HttpValueTransformer.transform('{"a": 1}', 'JSON'), { a: 1 });
+    assert.deepStrictEqual(HttpValueTransformer.transform({ x: 2 }, 'JSON'), { x: 2 });
+
+    // ARRAY
+    assert.deepStrictEqual(HttpValueTransformer.transform('[1, 2, 3]', 'ARRAY'), [1, 2, 3]);
+    assert.deepStrictEqual(HttpValueTransformer.transform('apple, banana, orange', 'ARRAY'), [
+      'apple',
+      'banana',
+      'orange',
+    ]);
+    assert.deepStrictEqual(HttpValueTransformer.transform(['a', 'b'], 'ARRAY'), ['a', 'b']);
+
+    // OBJECT
+    assert.deepStrictEqual(HttpValueTransformer.transform('{"name": "test"}', 'OBJECT'), {
+      name: 'test',
+    });
+    assert.deepStrictEqual(HttpValueTransformer.transform({ key: 'val' }, 'OBJECT'), {
+      key: 'val',
+    });
+  });
+
+  await t.test('8c. HttpValueTransformer: rejects invalid transformations strictly', () => {
+    assert.throws(
+      () => HttpValueTransformer.transform('not-a-number', 'NUMBER'),
+      HttpBindingTransformationError,
+    );
+    assert.throws(
+      () => HttpValueTransformer.transform('', 'NUMBER'),
+      HttpBindingTransformationError,
+    );
+    assert.throws(
+      () => HttpValueTransformer.transform('3.14159', 'INTEGER'),
+      HttpBindingTransformationError,
+    );
+    assert.throws(
+      () => HttpValueTransformer.transform('invalid-bool', 'BOOLEAN'),
+      HttpBindingTransformationError,
+    );
+    assert.throws(
+      () => HttpValueTransformer.transform('invalid {json', 'JSON'),
+      HttpBindingTransformationError,
+    );
+    assert.throws(
+      () => HttpValueTransformer.transform('invalid {json', 'OBJECT'),
+      HttpBindingTransformationError,
+    );
+  });
+
+  // ─── 9. Constraint Validation ───────────────────────────────────────────────
+
+  await t.test('9a. HttpInputValidator: validates required constraint', () => {
+    const errs1 = HttpInputValidator.validateConstraints('f', undefined, { required: true });
+    assert.strictEqual(errs1.length, 1);
+    assert.strictEqual(errs1[0].code, 'REQUIRED_FIELD_MISSING');
+
+    const errs2 = HttpInputValidator.validateConstraints('f', '', { required: true });
+    assert.strictEqual(errs2.length, 1);
+
+    const errs3 = HttpInputValidator.validateConstraints('f', 'valid', { required: true });
+    assert.strictEqual(errs3.length, 0);
+  });
+
+  await t.test('9b. HttpInputValidator: validates min/max, length, pattern, and enum', () => {
+    // min / max
+    assert.strictEqual(HttpInputValidator.validateConstraints('num', 5, { min: 10 }).length, 1);
+    assert.strictEqual(HttpInputValidator.validateConstraints('num', 15, { max: 10 }).length, 1);
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('num', 10, { min: 10, max: 10 }).length,
+      0,
+    );
+
+    // length
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('str', 'ab', { minLength: 3 }).length,
+      1,
+    );
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('str', 'abcd', { maxLength: 3 }).length,
+      1,
+    );
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('str', 'abc', { minLength: 3, maxLength: 3 }).length,
+      0,
+    );
+
+    // pattern
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('email', 'not-email', {
+        pattern: /^[\w.-]+@[\w.-]+\.\w+$/,
+      }).length,
+      1,
+    );
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('email', 'user@domain.com', {
+        pattern: /^[\w.-]+@[\w.-]+\.\w+$/,
+      }).length,
+      0,
+    );
+
+    // enum
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('status', 'PENDING', { enum: ['ACTIVE', 'INACTIVE'] })
+        .length,
+      1,
+    );
+    assert.strictEqual(
+      HttpInputValidator.validateConstraints('status', 'ACTIVE', { enum: ['ACTIVE', 'INACTIVE'] })
+        .length,
+      0,
+    );
+  });
+
+  // ─── 10. Validation Engine ──────────────────────────────────────────────────
+
+  await t.test('10a. HttpValidationEngine: validates and transforms single field', () => {
+    const def: HttpBindingDefinition = {
+      source: 'QUERY',
+      field: 'page',
+      target: 'page',
+      required: true,
+      type: 'INTEGER',
+    };
+
+    // Valid string number transforms to integer 5
+    const res1 = HttpValidationEngine.validateField(def, '5', { min: 1 });
+    assert.strictEqual(res1.errors.length, 0);
+    assert.strictEqual(res1.value, 5);
+
+    // Invalid string number produces error
+    const res2 = HttpValidationEngine.validateField(def, 'not-a-number');
+    assert.strictEqual(res2.errors.length, 1);
+    assert.strictEqual(res2.errors[0].code, 'TYPE_TRANSFORMATION_FAILED');
+
+    // Missing required field produces error
+    const res3 = HttpValidationEngine.validateField(def, undefined);
+    assert.strictEqual(res3.errors.length, 1);
+    assert.strictEqual(res3.errors[0].code, 'REQUIRED_FIELD_MISSING');
+  });
+
+  await t.test('10b. HttpValidationEngine: validates full plan and aggregates errors', () => {
+    const plan = HttpBindingPlan.create([
+      { source: 'PATH', field: 'id', target: 'userId', required: true, type: 'STRING' },
+      { source: 'QUERY', field: 'page', target: 'page', required: true, type: 'INTEGER' },
+      { source: 'QUERY', field: 'active', target: 'active', type: 'BOOLEAN', defaultValue: true },
+    ]);
+
+    // Valid inputs
+    const validResult = HttpValidationEngine.validatePlan(plan, {
+      userId: 'usr-123',
+      page: '10',
+    });
+    assert.strictEqual(validResult.success, true);
+    assert.strictEqual(validResult.errors.length, 0);
+    assert.deepStrictEqual(validResult.value, {
+      userId: 'usr-123',
+      page: 10,
+      active: true,
+    });
+
+    // Invalid inputs: missing userId + invalid page
+    const invalidResult = HttpValidationEngine.validatePlan(plan, {
+      page: 'invalid-integer',
+    });
+    assert.strictEqual(invalidResult.success, false);
+    assert.strictEqual(invalidResult.errors.length, 2);
+  });
+
+  await t.test('10c. HttpValidationEngine: identifies sensitive field names', () => {
+    assert.strictEqual(HttpValidationEngine.isSensitiveField('password'), true);
+    assert.strictEqual(HttpValidationEngine.isSensitiveField('TOKEN'), true);
+    assert.strictEqual(HttpValidationEngine.isSensitiveField('apiKey'), true);
+    assert.strictEqual(HttpValidationEngine.isSensitiveField('authorization'), true);
+    assert.strictEqual(HttpValidationEngine.isSensitiveField('username'), false);
+    assert.strictEqual(HttpValidationEngine.isSensitiveField('page'), false);
+  });
 });
