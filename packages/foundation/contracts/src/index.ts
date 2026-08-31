@@ -2439,3 +2439,84 @@ export interface HttpEndpointRegistry {
   has(endpointId: string): boolean;
   lock(): void;
 }
+
+// ============================================================================
+// Phase 8.6: HTTP Request Binding & Validation Engine Contracts
+// ============================================================================
+
+export type HttpBindingSource = 'PATH' | 'QUERY' | 'HEADER' | 'COOKIE' | 'BODY';
+
+export type HttpValueType =
+  'STRING' | 'NUMBER' | 'BOOLEAN' | 'INTEGER' | 'JSON' | 'ARRAY' | 'OBJECT';
+
+export interface HttpBindingDefinition {
+  readonly source: HttpBindingSource;
+  readonly field?: string | undefined;
+  readonly target: string;
+  readonly required?: boolean | undefined;
+  readonly type?: HttpValueType | undefined;
+  readonly defaultValue?: unknown | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpBindingContext<TReq = unknown> {
+  readonly request: HttpRequest<TReq>;
+  readonly route?: HttpMiddlewareRouteInfo | undefined;
+  readonly parameters: Readonly<Record<string, string>>;
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly executionContext: ExecutionContext;
+}
+
+export interface HttpValidationErrorDetail {
+  readonly field: string;
+  readonly source?: HttpBindingSource | undefined;
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface HttpValidationRule<T = unknown> {
+  readonly name: string;
+  validate(value: T, context?: HttpBindingContext): boolean | Promise<boolean>;
+  readonly message?: string | undefined;
+  readonly code?: string | undefined;
+}
+
+export interface HttpValidationResult {
+  readonly valid: boolean;
+  readonly errors: readonly HttpValidationErrorDetail[];
+}
+
+export interface HttpBindingResult<T = unknown> {
+  readonly success: boolean;
+  readonly value?: T | undefined;
+  readonly errors: readonly HttpValidationErrorDetail[];
+  readonly durationMs: number;
+}
+
+export interface HttpBinder<TInput = unknown, TOutput = unknown> {
+  readonly id: string;
+  bind(
+    context: HttpBindingContext<TInput>,
+  ): Promise<HttpBindingResult<TOutput>> | HttpBindingResult<TOutput>;
+}
+
+export interface HttpValidator<T = unknown> {
+  readonly id: string;
+  validate(
+    value: T,
+    context?: HttpBindingContext,
+  ): Promise<HttpValidationResult> | HttpValidationResult;
+}
+
+export interface HttpBindingDiagnosticsSnapshot {
+  readonly totalBindings: number;
+  readonly successfulBindings: number;
+  readonly failedBindings: number;
+  readonly missingValues: number;
+  readonly typeFailures: number;
+  readonly validationFailures: number;
+  readonly transformationFailures: number;
+  readonly activeBindings: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+}

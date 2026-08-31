@@ -79,3 +79,9 @@ export * from './diagnostics/HttpControllerDiagnostics';
 export * from './controller/HttpControllerExecutor';
 export * from './controller/HttpControllerCoordinator';
 export * from './controller/HttpControllerPipeline';
+
+// Request Binding & Validation (Phase 8.6)
+export * from './types/httpBindingTypes';
+export * from './errors/HttpBindingErrors';
+export * from './binding/HttpBindingValidator';
+export * from './binding/HttpBindingSnapshot';
