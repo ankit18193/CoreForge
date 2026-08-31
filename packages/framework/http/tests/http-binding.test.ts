@@ -9,12 +9,16 @@ import type {
 } from '@coreforge/contracts';
 
 import {
+  HttpBindingCoordinator,
+  HttpBindingDiagnostics,
+  HttpBindingExecutionError,
+  HttpBindingExecutor,
   HttpBindingConfigurationError,
   HttpBindingDefinitionError,
   HttpBindingError,
-  HttpBindingExecutionError,
   HttpBindingMissingFieldError,
   HttpBindingPlan,
+  HttpBindingProfiler,
   HttpBindingRegistry,
   HttpBindingResolver,
   HttpBindingSnapshot,
@@ -23,7 +27,12 @@ import {
   HttpBindingValidationError,
   HttpBindingValidator,
   HttpError,
+  HttpExecutionCoordinator,
   HttpInputValidator,
+  HttpLifecycleManager,
+  HttpRouter,
+  HttpRoutingCoordinator,
+  HttpRoutingDiagnostics,
   HttpValidationEngine,
   HttpValueExtractor,
   HttpValueTransformer,
@@ -722,4 +731,278 @@ test('CoreForge HTTP Request Binding & Validation Engine (@coreforge/http)', asy
     assert.strictEqual(HttpValidationEngine.isSensitiveField('username'), false);
     assert.strictEqual(HttpValidationEngine.isSensitiveField('page'), false);
   });
+
+  // ─── 11. Binding Diagnostics & Profiler ─────────────────────────────────────
+
+  await t.test('11a. HttpBindingProfiler: measures elapsed binding time', async () => {
+    const profiler = new HttpBindingProfiler().start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const duration = profiler.stop();
+    assert.ok(duration >= 5);
+  });
+
+  await t.test(
+    '11b. HttpBindingDiagnostics: records metrics accurately and provides pure numerical snapshot',
+    () => {
+      const diag = new HttpBindingDiagnostics();
+      diag.recordBindingStarted();
+      diag.recordBindingSuccess(12.5);
+      diag.recordBindingStarted();
+      diag.recordBindingFailure(8.0, [
+        { field: 'email', code: 'REQUIRED_FIELD_MISSING', message: 'Email required' },
+        { field: 'age', code: 'TYPE_TRANSFORMATION_FAILED', message: 'Age invalid' },
+        { field: 'role', code: 'INVALID_ENUM', message: 'Role invalid' },
+      ]);
+
+      const snapshot = diag.getSnapshot();
+      assert.strictEqual(snapshot.totalBindings, 2);
+      assert.strictEqual(snapshot.successfulBindings, 1);
+      assert.strictEqual(snapshot.failedBindings, 1);
+      assert.strictEqual(snapshot.missingValues, 1);
+      assert.strictEqual(snapshot.typeFailures, 1);
+      assert.strictEqual(snapshot.validationFailures, 1);
+      assert.strictEqual(snapshot.activeBindings, 0);
+      assert.ok(snapshot.averageDurationMs > 0);
+      assert.strictEqual(snapshot.slowestDurationMs, 12.5);
+
+      diag.reset();
+      assert.strictEqual(diag.getSnapshot().totalBindings, 0);
+    },
+  );
+
+  // ─── 12. Binding Executor & Coordinator ─────────────────────────────────────
+
+  await t.test('12a. HttpBindingExecutor: executes plan with cancellation and success', () => {
+    const plan = HttpBindingPlan.create([
+      { source: 'QUERY', field: 'page', target: 'page', type: 'INTEGER', defaultValue: 1 },
+    ]);
+    const executor = new HttpBindingExecutor();
+
+    // Normal execution
+    const mockExecCtx = {
+      id: 'e1',
+      signal: new AbortController().signal,
+    } as unknown as ExecutionContext;
+    const ctx: HttpBindingContext = {
+      request: {
+        method: 'GET',
+        url: '/test?page=3',
+        path: '/test',
+        query: { page: '3' },
+        headers: {},
+      } as unknown as HttpRequest,
+      parameters: {},
+      metadata: {},
+      executionContext: mockExecCtx,
+    };
+    const res = executor.execute(plan, ctx);
+    assert.strictEqual(res.success, true);
+    assert.deepStrictEqual(res.value, { page: 3 });
+
+    // Cancelled execution
+    const abortCtrl = new AbortController();
+    abortCtrl.abort();
+    const cancelledCtx: HttpBindingContext = {
+      ...ctx,
+      executionContext: { id: 'e2', signal: abortCtrl.signal } as unknown as ExecutionContext,
+    };
+    const cancelRes = executor.execute(plan, cancelledCtx);
+    assert.strictEqual(cancelRes.success, false);
+    assert.strictEqual(cancelRes.errors[0].code, 'OPERATION_CANCELLED');
+  });
+
+  await t.test('12b. HttpBindingCoordinator: registers and coordinates binding plans', () => {
+    const coordinator = new HttpBindingCoordinator();
+    coordinator.register('users.create', [
+      { source: 'BODY', field: 'username', target: 'username', required: true, type: 'STRING' },
+      { source: 'BODY', field: 'age', target: 'age', required: true, type: 'INTEGER' },
+    ]);
+
+    const mockExecCtx = {
+      id: 'e3',
+      signal: new AbortController().signal,
+    } as unknown as ExecutionContext;
+    const ctx: HttpBindingContext = {
+      request: {
+        method: 'POST',
+        url: '/users',
+        path: '/users',
+        headers: {},
+        body: { username: 'alice', age: '25' },
+      } as unknown as HttpRequest,
+      parameters: {},
+      metadata: {},
+      executionContext: mockExecCtx,
+    };
+
+    const res = coordinator.bind('users.create', ctx);
+    assert.strictEqual(res.success, true);
+    assert.deepStrictEqual(res.value, { username: 'alice', age: 25 });
+  });
+
+  // ─── 13. Pipeline Integration & Short-Circuiting ───────────────────────────
+
+  await t.test(
+    '13a. Pipeline Integration: Router -> MW -> Controller -> Binding -> App successful execution',
+    async () => {
+      let controllerInvoked = false;
+      let applicationInvoked = false;
+
+      const router = new HttpRouter();
+      router.get('/products/:id', 'products.get', { metadata: { id: 'products.get.route' } });
+
+      // Register binding plan for route
+      router.bind('products.get.route', [
+        { source: 'PATH', field: 'id', target: 'productId', required: true, type: 'STRING' },
+        {
+          source: 'QUERY',
+          field: 'details',
+          target: 'includeDetails',
+          type: 'BOOLEAN',
+          defaultValue: false,
+        },
+      ]);
+
+      // Register controller
+      router.registerController({
+        id: 'product.ctrl',
+        name: 'ProductCtrl',
+        execute: async (ctx) => {
+          controllerInvoked = true;
+          const bound = (
+            ctx.metadata as { boundInput?: { productId: string; includeDetails: boolean } }
+          ).boundInput;
+          return {
+            id: bound?.productId,
+            withDetails: bound?.includeDetails,
+            handledBy: 'ProductCtrl',
+          };
+        },
+      });
+
+      // Register endpoint
+      router.registerEndpoint({
+        id: 'product.get.ep',
+        name: 'GetProductEndpoint',
+        routeId: 'products.get.route',
+        operation: 'products.get',
+        controllerId: 'product.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const lifecycle = new HttpLifecycleManager();
+      lifecycle.start();
+
+      const mockExecCoord = {
+        execute: async (req: import('@coreforge/contracts').HttpRequest) => {
+          applicationInvoked = true;
+          return { status: 200, headers: {}, body: req.body };
+        },
+      } as unknown as HttpExecutionCoordinator;
+
+      const routingCoordinator = new HttpRoutingCoordinator(
+        lifecycle,
+        new HttpRoutingDiagnostics(),
+        router,
+        mockExecCoord,
+      );
+
+      const res = await routingCoordinator.execute({
+        method: 'GET',
+        url: '/products/PROD-99?details=true',
+        path: '/products/PROD-99',
+        headers: {},
+        query: { details: 'true' },
+      });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(controllerInvoked, true);
+      assert.strictEqual(applicationInvoked, true);
+
+      const body = res.body as {
+        serviceName: string;
+        input: { id: string; withDetails: boolean; handledBy: string };
+      };
+      assert.strictEqual(body.input.id, 'PROD-99');
+      assert.strictEqual(body.input.withDetails, true);
+      assert.strictEqual(body.input.handledBy, 'ProductCtrl');
+    },
+  );
+
+  await t.test(
+    '13b. Pipeline Integration: Validation failure short-circuits — Controller and App NEVER execute',
+    async () => {
+      let controllerInvoked = false;
+      let applicationInvoked = false;
+
+      const router = new HttpRouter();
+      router.get('/orders/:id', 'orders.get', { metadata: { id: 'orders.get.route' } });
+
+      // Binding plan requiring integer limit in query
+      router.bind('orders.get.route', [
+        { source: 'PATH', field: 'id', target: 'orderId', required: true, type: 'STRING' },
+        { source: 'QUERY', field: 'limit', target: 'limit', required: true, type: 'INTEGER' },
+      ]);
+
+      router.registerController({
+        id: 'order.ctrl',
+        name: 'OrderCtrl',
+        execute: async () => {
+          controllerInvoked = true;
+          return { ok: true };
+        },
+      });
+
+      router.registerEndpoint({
+        id: 'order.get.ep',
+        name: 'GetOrderEndpoint',
+        routeId: 'orders.get.route',
+        operation: 'orders.get',
+        controllerId: 'order.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const lifecycle = new HttpLifecycleManager();
+      lifecycle.start();
+
+      const mockExecCoord = {
+        execute: async () => {
+          applicationInvoked = true;
+          return { status: 200, headers: {}, body: {} };
+        },
+      } as unknown as HttpExecutionCoordinator;
+
+      const routingCoordinator = new HttpRoutingCoordinator(
+        lifecycle,
+        new HttpRoutingDiagnostics(),
+        router,
+        mockExecCoord,
+      );
+
+      // Invalid query limit: 'not-a-number'
+      const res = await routingCoordinator.execute({
+        method: 'GET',
+        url: '/orders/ORD-1?limit=not-a-number',
+        path: '/orders/ORD-1',
+        headers: {},
+        query: { limit: 'not-a-number' },
+      });
+
+      assert.strictEqual(res.status, 400);
+      assert.strictEqual(
+        controllerInvoked,
+        false,
+        'Controller must NOT execute when validation fails',
+      );
+      assert.strictEqual(
+        applicationInvoked,
+        false,
+        'Application must NOT execute when validation fails',
+      );
+    },
+  );
 });

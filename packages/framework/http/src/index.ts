@@ -92,3 +92,7 @@ export * from './binding/HttpBindingResolver';
 export * from './binding/HttpValueTransformer';
 export * from './validation/HttpInputValidator';
 export * from './validation/HttpValidationEngine';
+export * from './internal/HttpBindingProfiler';
+export * from './diagnostics/HttpBindingDiagnostics';
+export * from './binding/HttpBindingExecutor';
+export * from './binding/HttpBindingCoordinator';

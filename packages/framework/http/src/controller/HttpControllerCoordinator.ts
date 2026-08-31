@@ -1,4 +1,5 @@
 import type {
+  HttpBindingDefinition,
   HttpController,
   HttpControllerContext,
   HttpControllerDiagnosticsSnapshot,
@@ -10,6 +11,8 @@ import type {
 import { HttpControllerExecutor, HttpControllerExecutionOptions } from './HttpControllerExecutor';
 import { HttpControllerRegistry } from './HttpControllerRegistry';
 import { HttpControllerResolver } from './HttpControllerResolver';
+import { HttpBindingCoordinator } from '../binding/HttpBindingCoordinator';
+import { HttpBindingPlan } from '../binding/HttpBindingPlan';
 import { HttpControllerDiagnostics } from '../diagnostics/HttpControllerDiagnostics';
 import { HttpEndpointRegistry } from '../endpoint/HttpEndpointRegistry';
 import { HttpEndpointResolver } from '../endpoint/HttpEndpointResolver';
@@ -23,6 +26,7 @@ export class HttpControllerCoordinator {
   private readonly _endpointRegistry: HttpEndpointRegistry;
   private readonly _controllerResolver: HttpControllerResolver;
   private readonly _endpointResolver: HttpEndpointResolver;
+  private readonly _bindingCoordinator: HttpBindingCoordinator;
   private readonly _diagnostics: HttpControllerDiagnostics;
   private readonly _executor: HttpControllerExecutor;
   private readonly _defaultTimeoutMs?: number | undefined;
@@ -32,11 +36,13 @@ export class HttpControllerCoordinator {
     endpointRegistry?: HttpEndpointRegistry,
     diagnostics?: HttpControllerDiagnostics,
     defaultTimeoutMs?: number,
+    bindingCoordinator?: HttpBindingCoordinator,
   ) {
     this._controllerRegistry = controllerRegistry ?? new HttpControllerRegistry();
     this._endpointRegistry = endpointRegistry ?? new HttpEndpointRegistry();
     this._controllerResolver = new HttpControllerResolver(this._controllerRegistry);
     this._endpointResolver = new HttpEndpointResolver(this._endpointRegistry);
+    this._bindingCoordinator = bindingCoordinator ?? new HttpBindingCoordinator();
     this._diagnostics = diagnostics ?? new HttpControllerDiagnostics();
     this._executor = new HttpControllerExecutor(this._diagnostics);
     this._defaultTimeoutMs = defaultTimeoutMs;
@@ -56,6 +62,18 @@ export class HttpControllerCoordinator {
 
   public get endpointResolver(): HttpEndpointResolver {
     return this._endpointResolver;
+  }
+
+  public get bindingCoordinator(): HttpBindingCoordinator {
+    return this._bindingCoordinator;
+  }
+
+  public registerBinding(
+    id: string,
+    definitionsOrPlan: readonly HttpBindingDefinition[] | HttpBindingPlan,
+  ): this {
+    this._bindingCoordinator.register(id, definitionsOrPlan);
+    return this;
   }
 
   public get diagnostics(): HttpControllerDiagnostics {

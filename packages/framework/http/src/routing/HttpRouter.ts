@@ -1,4 +1,5 @@
 import {
+  HttpBindingDefinition,
   HttpController,
   HttpEndpoint,
   HttpEndpointOptions,
@@ -13,6 +14,8 @@ import {
 
 import { HttpRouteRegistry } from './HttpRouteRegistry';
 import { HttpRouteResolver } from './HttpRouteResolver';
+import { HttpBindingCoordinator } from '../binding/HttpBindingCoordinator';
+import { HttpBindingPlan } from '../binding/HttpBindingPlan';
 import { HttpControllerCoordinator } from '../controller/HttpControllerCoordinator';
 import { HttpMiddlewareCoordinator } from '../middleware/HttpMiddlewareCoordinator';
 
@@ -49,6 +52,10 @@ export class HttpRouter {
     return this._controllerCoordinator;
   }
 
+  public get bindingCoordinator(): HttpBindingCoordinator {
+    return this._controllerCoordinator.bindingCoordinator;
+  }
+
   public use<TContext = unknown, TResult = unknown>(
     middleware: HttpMiddleware<TContext, TResult>,
     options?: HttpMiddlewareOptions,
@@ -67,12 +74,27 @@ export class HttpRouter {
     return this;
   }
 
+  public registerBinding(
+    id: string,
+    definitionsOrPlan: readonly HttpBindingDefinition[] | HttpBindingPlan,
+  ): this {
+    this._controllerCoordinator.registerBinding(id, definitionsOrPlan);
+    return this;
+  }
+
   public controller(controller: HttpController, priority?: number): this {
     return this.registerController(controller, priority);
   }
 
   public endpoint(endpoint: HttpEndpoint, options?: HttpEndpointOptions): this {
     return this.registerEndpoint(endpoint, options);
+  }
+
+  public bind(
+    id: string,
+    definitionsOrPlan: readonly HttpBindingDefinition[] | HttpBindingPlan,
+  ): this {
+    return this.registerBinding(id, definitionsOrPlan);
   }
 
   public get size(): number {
@@ -88,6 +110,7 @@ export class HttpRouter {
     this._middlewareCoordinator.registry.lock();
     this._controllerCoordinator.controllerRegistry.lock();
     this._controllerCoordinator.endpointRegistry.lock();
+    this._controllerCoordinator.bindingCoordinator.registry.lock();
   }
 
   /**

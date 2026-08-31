@@ -1,5 +1,6 @@
 import type {
   ExecutionContext,
+  HttpBindingContext,
   HttpRequest,
   HttpResponse,
   HttpRouteMatch,
@@ -8,6 +9,7 @@ import type {
 import { HttpControllerCoordinator } from './HttpControllerCoordinator';
 import { HttpControllerSnapshot } from './HttpControllerSnapshot';
 import { HttpContextFactory } from '../context/HttpContextFactory';
+import { HttpBindingValidationError } from '../errors/HttpBindingErrors';
 import { HttpExecutionCoordinator } from '../execution/HttpExecutionCoordinator';
 import { HttpResponseFactory } from '../response/HttpResponseFactory';
 import {
@@ -54,6 +56,57 @@ export class HttpControllerPipeline {
     // 2. Resolve Endpoint for this Route
     const endpoint = this._coordinator.endpointResolver.resolveByRouteId(match.routeId);
 
+    // 2.5 Resolve & Execute Binding Plan (if registered)
+    const bindingPlan =
+      (endpoint
+        ? this._coordinator.bindingCoordinator.resolver.resolvePlan(endpoint.id)
+        : undefined) ??
+      this._coordinator.bindingCoordinator.resolver.resolvePlan(match.routeId) ??
+      this._coordinator.bindingCoordinator.resolver.resolvePlan(match.operation) ??
+      (endpoint
+        ? this._coordinator.bindingCoordinator.resolver.resolvePlan(endpoint.controllerId)
+        : undefined);
+
+    let boundInput: Record<string, unknown> | undefined;
+
+    if (bindingPlan) {
+      const bindingContext: HttpBindingContext<TReq> = {
+        request,
+        route: {
+          id: match.routeId,
+          method: match.method,
+          path: match.path,
+          operation: match.operation,
+          metadata: match.metadata,
+        },
+        parameters: match.parameters,
+        metadata: request.metadata ?? {},
+        executionContext: execContext as unknown as ExecutionContext,
+      };
+
+      const bindingResult = this._coordinator.bindingCoordinator.bindPlan(
+        bindingPlan,
+        bindingContext,
+      );
+
+      if (!bindingResult.success) {
+        const valErr = new HttpBindingValidationError(
+          'Request binding and validation failed',
+          bindingResult.errors,
+        );
+        return HttpResponseFactory.createFailure<TRes>(
+          HTTP_STATUS_CODES.BAD_REQUEST,
+          valErr,
+          {},
+          undefined,
+          undefined,
+          this._errorMappingOptions,
+        );
+      }
+
+      boundInput = bindingResult.value as Record<string, unknown>;
+    }
+
     // 3. If Endpoint is bound to a Controller, execute through Controller
     if (endpoint && endpoint.enabled) {
       const controllerContext = HttpControllerSnapshot.createContext<TReq>({
@@ -66,7 +119,10 @@ export class HttpControllerPipeline {
           metadata: match.metadata,
         },
         parameters: match.parameters,
-        metadata: request.metadata ?? {},
+        metadata: {
+          ...(request.metadata ?? {}),
+          ...(boundInput ? { boundInput } : {}),
+        },
         transportContext: transportCtx,
         executionContext: execContext as unknown as ExecutionContext,
       });
@@ -126,12 +182,12 @@ export class HttpControllerPipeline {
         const inputPayload =
           val !== undefined
             ? val
-            : {
+            : (boundInput ?? {
                 parameters: match.parameters,
                 query: request.query ?? {},
                 headers: request.headers,
                 body: rawBody,
-              };
+              });
 
         const routedPayload = {
           serviceName: endpoint.operation || match.operation,
@@ -166,6 +222,34 @@ export class HttpControllerPipeline {
 
     // 4. Default execution path without dedicated controller
     if (this._executionCoordinator) {
+      // If request has boundInput or is not already a routed request, build routedRequest
+      if (boundInput) {
+        const routedPayload = {
+          serviceName: match.operation,
+          input: boundInput,
+        };
+
+        const routedRequest: HttpRequest = {
+          method: request.method,
+          url: request.url,
+          path: request.path,
+          headers: request.headers,
+          query: request.query,
+          pathParameters: match.parameters,
+          cookies: request.cookies,
+          body: routedPayload,
+          metadata: {
+            ...(request.metadata || {}),
+            routeId: match.routeId,
+            operation: match.operation,
+            routeMetadata: match.metadata,
+          },
+          signal: request.signal,
+        };
+
+        return this._executionCoordinator.execute<unknown, TRes>(routedRequest, options);
+      }
+
       // If request is already a routed request from middleware pipeline, execute directly
       if (
         request.body &&
