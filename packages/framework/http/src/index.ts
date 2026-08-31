@@ -51,3 +51,9 @@ export * from './internal/HttpRoutingProfiler';
 export * from './diagnostics/HttpRoutingDiagnostics';
 export * from './routing/HttpRouter';
 export * from './routing/HttpRoutingCoordinator';
+
+// Middleware (Phase 8.4)
+export * from './types/httpMiddlewareTypes';
+export * from './errors/HttpMiddlewareErrors';
+export * from './middleware/HttpMiddlewareValidator';
+export * from './middleware/HttpMiddlewareSnapshot';

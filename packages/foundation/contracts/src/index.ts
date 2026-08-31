@@ -2273,3 +2273,91 @@ export interface HttpRoutingDiagnosticsSnapshot {
   readonly averageResolutionDurationMs: number;
   readonly slowestResolutionDurationMs: number;
 }
+
+// ============================================================================
+// Phase 8.4: HTTP Middleware & Request Pipeline Engine Contracts
+// ============================================================================
+
+export type HttpMiddlewareState = 'CREATED' | 'READY' | 'STOPPING' | 'STOPPED';
+
+export type HttpMiddlewareFailureStrategy = 'CONTINUE' | 'STOP' | 'FAIL_FAST';
+
+export interface HttpMiddlewareRouteInfo {
+  readonly id: string;
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly operation: string;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpMiddlewareContext<TReq = unknown> {
+  readonly request: HttpRequest<TReq>;
+  readonly route?: HttpMiddlewareRouteInfo | undefined;
+  readonly parameters: Readonly<Record<string, string>>;
+  readonly transportContext?: TransportContext | undefined;
+  readonly executionContext: ExecutionContext;
+  readonly metadata: Readonly<Record<string, unknown>>;
+}
+
+export type HttpMiddlewareNext<TResult = unknown> = () => Promise<TResult>;
+
+export interface HttpMiddleware<TContext = HttpMiddlewareContext, TResult = unknown> {
+  readonly id: string;
+  readonly name?: string | undefined;
+  readonly priority?: number | undefined;
+  execute(context: TContext, next: HttpMiddlewareNext<TResult>): Promise<TResult> | TResult;
+}
+
+export interface HttpMiddlewareOptions {
+  readonly priority?: number | undefined;
+  readonly enabled?: boolean | undefined;
+  readonly failureStrategy?: HttpMiddlewareFailureStrategy | undefined;
+  readonly timeoutMs?: number | undefined;
+}
+
+export type HttpMiddlewareResultState = 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'SKIPPED';
+
+export interface HttpMiddlewareResult<TResult = unknown> {
+  readonly middlewareId: string;
+  readonly state: HttpMiddlewareResultState;
+  readonly success: boolean;
+  readonly value?: TResult | undefined;
+  readonly error?: unknown | undefined;
+  readonly durationMs: number;
+}
+
+export interface HttpMiddlewareBatchResult<TResult = unknown> {
+  readonly success: boolean;
+  readonly results: readonly HttpMiddlewareResult<TResult>[];
+  readonly totalMiddleware: number;
+  readonly executedMiddleware: number;
+  readonly failedMiddleware: number;
+  readonly skippedMiddleware: number;
+  readonly cancelledMiddleware: number;
+  readonly durationMs: number;
+}
+
+export interface HttpMiddlewareDiagnosticsSnapshot {
+  readonly totalExecutions: number;
+  readonly successfulExecutions: number;
+  readonly failedExecutions: number;
+  readonly cancelledExecutions: number;
+  readonly skippedExecutions: number;
+  readonly activeExecutions: number;
+  readonly registrationFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+}
+
+export interface HttpMiddlewareRegistry {
+  readonly size: number;
+  readonly locked: boolean;
+  register(middleware: HttpMiddleware, options?: HttpMiddlewareOptions): void;
+  get(middlewareId: string): HttpMiddleware | undefined;
+  list(): readonly HttpMiddleware[];
+  lock(): void;
+}
+
+export interface HttpMiddlewareResolver {
+  resolve(): readonly HttpMiddleware[];
+}
