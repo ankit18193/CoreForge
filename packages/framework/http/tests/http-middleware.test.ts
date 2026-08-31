@@ -1,4 +1,6 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { test } from 'node:test';
 
 import type {
@@ -49,7 +51,7 @@ import {
   HttpTransportManager,
 } from '../src/index';
 
-test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stages 1-4: Middleware Pipeline & Routing Integration', async (t) => {
+test('CoreForge HTTP Middleware Engine (@coreforge/http) — Complete Integration & Verification', async (t) => {
   // =========================================================================
   // 1. CONTRACTS & TYPES
   // =========================================================================
@@ -1500,6 +1502,303 @@ test('CoreForge HTTP Middleware Engine (@coreforge/http) — Stages 1-4: Middlew
       assert.strictEqual(diag.successfulExecutions, 1);
 
       await manager.stop();
+    },
+  );
+
+  // =========================================================================
+  // 23. HIGH CONCURRENCY STRESS TEST (1,000 CONCURRENT REQUESTS)
+  // =========================================================================
+  await t.test(
+    '23. High-concurrency: 1,000 concurrent routed requests with 3-tier onion middleware pipeline',
+    async () => {
+      const CONCURRENCY = 1000;
+      const app = ApplicationIntegrationBuilder.create().build();
+
+      app.applicationManager.register('orders.get', {
+        async execute(input: unknown) {
+          const typed = input as { parameters: { id: string } };
+          return { orderId: typed.parameters.id, processedAt: Date.now() };
+        },
+      });
+
+      app.applicationManager.register('products.get', {
+        async execute(input: unknown) {
+          const typed = input as { parameters: { sku: string } };
+          return { sku: typed.parameters.sku, inStock: true };
+        },
+      });
+
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/orders/:id', 'orders.get');
+      router.get('/products/:sku', 'products.get');
+
+      // Middleware 1: Correlation ID injector
+      router.use(
+        {
+          id: 'correlation-mw',
+          execute: async (ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+            const res = (await next()) as HttpResponse;
+            return {
+              ...res,
+              headers: {
+                ...res.headers,
+                'x-req-id': String(ctx.request.headers['x-request-id'] || 'none'),
+              },
+            };
+          },
+        },
+        { priority: 100 },
+      );
+
+      // Middleware 2: Path verification
+      router.use(
+        {
+          id: 'path-checker-mw',
+          execute: async (ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+            assert.ok(ctx.route);
+            assert.ok(ctx.route.path);
+            return next();
+          },
+        },
+        { priority: 50 },
+      );
+
+      // Middleware 3: Body decorator
+      router.use(
+        {
+          id: 'body-decorator-mw',
+          execute: async (_ctx: HttpMiddlewareContext, next: HttpMiddlewareNext) => {
+            const res = (await next()) as HttpResponse<Record<string, unknown>>;
+            return {
+              ...res,
+              body: {
+                ...res.body,
+                verified: true,
+              },
+            };
+          },
+        },
+        { priority: 10 },
+      );
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const tasks = Array.from({ length: CONCURRENCY }, async (_, idx) => {
+        const isOrder = idx % 2 === 0;
+        const reqId = `req-${idx}`;
+
+        if (isOrder) {
+          const orderId = `ord-${idx}`;
+          const res = await manager.handleRoutedRequest<
+            unknown,
+            { orderId: string; verified: boolean }
+          >({
+            method: 'GET',
+            url: `/orders/${orderId}`,
+            path: `/orders/${orderId}`,
+            headers: { 'x-request-id': reqId },
+          });
+
+          assert.strictEqual(res.status, 200);
+          assert.strictEqual(res.headers['x-req-id'], reqId);
+          assert.strictEqual(res.body?.orderId, orderId);
+          assert.strictEqual(res.body?.verified, true);
+        } else {
+          const sku = `sku-${idx}`;
+          const res = await manager.handleRoutedRequest<
+            unknown,
+            { sku: string; verified: boolean }
+          >({
+            method: 'GET',
+            url: `/products/${sku}`,
+            path: `/products/${sku}`,
+            headers: { 'x-request-id': reqId },
+          });
+
+          assert.strictEqual(res.status, 200);
+          assert.strictEqual(res.headers['x-req-id'], reqId);
+          assert.strictEqual(res.body?.sku, sku);
+          assert.strictEqual(res.body?.verified, true);
+        }
+      });
+
+      await Promise.all(tasks);
+
+      const diag = manager.getMiddlewareDiagnostics();
+      assert.ok(diag);
+      assert.strictEqual(diag.totalExecutions, CONCURRENCY * 3);
+      assert.strictEqual(diag.successfulExecutions, CONCURRENCY * 3);
+      assert.strictEqual(diag.failedExecutions, 0);
+      assert.strictEqual(diag.activeExecutions, 0);
+
+      await manager.stop();
+
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 24. CONCURRENT TIMEOUT & CANCELLATION UNDER LOAD
+  // =========================================================================
+  await t.test(
+    '24. Concurrent timeouts and AbortSignal cancellation under load drain cleanly',
+    async () => {
+      const CONCURRENCY = 100;
+      const app = ApplicationIntegrationBuilder.create().build();
+
+      app.applicationManager.register('slow.op', {
+        async execute(_input: unknown, ctx?: ExecutionContext) {
+          // Slow operation
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => resolve(), 200);
+            if (ctx?.signal) {
+              ctx.signal.addEventListener('abort', () => {
+                clearTimeout(timer);
+                reject(new Error('Operation cancelled'));
+              });
+            }
+          });
+          return { ok: true };
+        },
+      });
+
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/slow', 'slow.op');
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withDefaultTimeout(50) // 50ms timeout
+        .withAutoStart(true)
+        .build();
+
+      const tasks = Array.from({ length: CONCURRENCY }, async (_, idx) => {
+        const controller = new AbortController();
+        if (idx % 2 === 0) {
+          // Cancel immediately
+          setTimeout(() => controller.abort(), 5);
+        }
+
+        const res = await manager.handleRoutedRequest(
+          {
+            method: 'GET',
+            url: '/slow',
+            path: '/slow',
+            headers: {},
+            signal: controller.signal,
+          },
+          { timeoutMs: 50 },
+        );
+
+        // Expect either 408 / 499 / 500 / 504 error status
+        assert.ok(res.status >= 400);
+      });
+
+      await Promise.all(tasks);
+
+      const diag = manager.getDiagnostics();
+      assert.strictEqual(diag.activeRequests, 0);
+
+      await manager.stop();
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 25. ARCHITECTURAL BOUNDARY: ZERO FORBIDDEN DEPENDENCIES
+  // =========================================================================
+  await t.test('25. Architectural boundary: Zero forbidden dependencies in @coreforge/http', () => {
+    const pkgJsonPath = path.resolve(__dirname, '../../package.json');
+    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+
+    const deps = Object.keys(pkgJson.dependencies || {});
+    const forbidden = [
+      'express',
+      'fastify',
+      'koa',
+      'hapi',
+      '@coreforge/interceptors',
+      '@coreforge/kernel',
+      '@coreforge/application',
+      '@coreforge/policy',
+      '@coreforge/schema',
+      'path-to-regexp',
+      'regexparam',
+      'radix3',
+      'find-my-way',
+      'ws',
+      'socket.io',
+      'redis',
+      'rabbitmq',
+      'kafka',
+    ];
+
+    for (const f of forbidden) {
+      assert.strictEqual(
+        deps.includes(f),
+        false,
+        `Forbidden dependency detected in @coreforge/http: ${f}`,
+      );
+    }
+  });
+
+  // =========================================================================
+  // 26. DIAGNOSTICS SECURITY: ZERO PAYLOAD / HEADER LEAKAGE
+  // =========================================================================
+  await t.test(
+    '26. Diagnostics Security: Pure numerical tracking with zero payload/header retention',
+    () => {
+      const diag = new HttpMiddlewareDiagnostics();
+      diag.recordExecutionStarted();
+      diag.recordExecutionSuccess(5.2);
+      diag.recordExecutionFailure(2.1, false);
+      diag.recordExecutionFailure(1.0, true);
+      diag.recordExecutionSkipped();
+      diag.recordRegistrationFailure();
+
+      const snapshot = diag.getSnapshot();
+      const keys = Object.keys(snapshot);
+
+      // Verify all properties are strictly numbers
+      for (const key of keys) {
+        const val = (snapshot as unknown as Record<string, unknown>)[key];
+        assert.strictEqual(
+          typeof val,
+          'number',
+          `Diagnostic snapshot key '${key}' must be a number, got ${typeof val}`,
+        );
+      }
+
+      // Verify zero sensitive data keys
+      const forbiddenKeys = [
+        'url',
+        'headers',
+        'cookies',
+        'authorization',
+        'body',
+        'parameters',
+        'executionId',
+        'traceId',
+        'stack',
+        'credentials',
+        'token',
+      ];
+
+      for (const fk of forbiddenKeys) {
+        assert.strictEqual(
+          keys.includes(fk),
+          false,
+          `Forbidden sensitive key detected in diagnostics snapshot: ${fk}`,
+        );
+      }
     },
   );
 });
