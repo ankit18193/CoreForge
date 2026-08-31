@@ -85,3 +85,7 @@ export * from './types/httpBindingTypes';
 export * from './errors/HttpBindingErrors';
 export * from './binding/HttpBindingValidator';
 export * from './binding/HttpBindingSnapshot';
+export * from './binding/HttpValueExtractor';
+export * from './binding/HttpBindingPlan';
+export * from './binding/HttpBindingRegistry';
+export * from './binding/HttpBindingResolver';

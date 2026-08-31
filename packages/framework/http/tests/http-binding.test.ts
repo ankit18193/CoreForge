@@ -14,12 +14,16 @@ import {
   HttpBindingError,
   HttpBindingExecutionError,
   HttpBindingMissingFieldError,
+  HttpBindingPlan,
+  HttpBindingRegistry,
+  HttpBindingResolver,
   HttpBindingSnapshot,
   HttpBindingTransformationError,
   HttpBindingTypeError,
   HttpBindingValidationError,
   HttpBindingValidator,
   HttpError,
+  HttpValueExtractor,
 } from '../src/index';
 
 test('CoreForge HTTP Request Binding & Validation Engine (@coreforge/http)', async (t) => {
@@ -304,6 +308,207 @@ test('CoreForge HTTP Request Binding & Validation Engine (@coreforge/http)', asy
       assert.ok(Object.isFrozen(frozen));
       assert.strictEqual(frozen.name, 'test');
       assert.strictEqual(frozen['self'], frozen);
+    },
+  );
+
+  // ─── 4. Value Extraction ───────────────────────────────────────────────────
+
+  await t.test(
+    '4a. HttpValueExtractor: extracts from PATH, QUERY, HEADER, COOKIE, and BODY',
+    () => {
+      const request: HttpRequest = {
+        method: 'POST',
+        url: '/users/usr-42?page=5&sort=desc',
+        path: '/users/usr-42',
+        pathParameters: { id: 'usr-42' },
+        query: { page: '5', sort: 'desc' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': 'secret-key-123',
+          Authorization: 'Bearer token-abc',
+        },
+        cookies: {
+          sessionId: 'sess-999',
+        },
+        body: {
+          username: 'john_doe',
+          profile: { age: 30 },
+        },
+      };
+
+      // PATH
+      assert.strictEqual(HttpValueExtractor.extractFromSource(request, 'PATH', 'id'), 'usr-42');
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'PATH', 'nonexistent'),
+        undefined,
+      );
+
+      // QUERY
+      assert.strictEqual(HttpValueExtractor.extractFromSource(request, 'QUERY', 'page'), '5');
+      assert.strictEqual(HttpValueExtractor.extractFromSource(request, 'QUERY', 'sort'), 'desc');
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'QUERY', 'missing'),
+        undefined,
+      );
+
+      // HEADER (case-insensitive)
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'HEADER', 'x-api-key'),
+        'secret-key-123',
+      );
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'HEADER', 'X-API-KEY'),
+        'secret-key-123',
+      );
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'HEADER', 'authorization'),
+        'Bearer token-abc',
+      );
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'HEADER', 'missing-header'),
+        undefined,
+      );
+
+      // COOKIE
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'COOKIE', 'sessionId'),
+        'sess-999',
+      );
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'COOKIE', 'missing-cookie'),
+        undefined,
+      );
+
+      // BODY (field vs full object)
+      assert.strictEqual(
+        HttpValueExtractor.extractFromSource(request, 'BODY', 'username'),
+        'john_doe',
+      );
+      assert.deepStrictEqual(HttpValueExtractor.extractFromSource(request, 'BODY'), {
+        username: 'john_doe',
+        profile: { age: 30 },
+      });
+    },
+  );
+
+  await t.test('4b. HttpValueExtractor: extract method using HttpBindingDefinition', () => {
+    const request: HttpRequest = {
+      method: 'GET',
+      url: '/items/item-10',
+      path: '/items/item-10',
+      pathParameters: { itemId: 'item-10' },
+      query: { filter: 'active' },
+      headers: { 'X-Tenant-ID': 'tenant-alpha' },
+    };
+
+    const pathDef: HttpBindingDefinition = { source: 'PATH', field: 'itemId', target: 'id' };
+    const queryDef: HttpBindingDefinition = { source: 'QUERY', field: 'filter', target: 'status' };
+    const headerDef: HttpBindingDefinition = {
+      source: 'HEADER',
+      field: 'x-tenant-id',
+      target: 'tenantId',
+    };
+
+    assert.strictEqual(HttpValueExtractor.extract(request, pathDef), 'item-10');
+    assert.strictEqual(HttpValueExtractor.extract(request, queryDef), 'active');
+    assert.strictEqual(HttpValueExtractor.extract(request, headerDef), 'tenant-alpha');
+  });
+
+  // ─── 5. Binding Plan ────────────────────────────────────────────────────────
+
+  await t.test('5. HttpBindingPlan: compiles immutable deterministic plan', () => {
+    const plan = HttpBindingPlan.create([
+      { source: 'PATH', field: 'id', target: 'userId' },
+      { source: 'QUERY', field: 'page', target: 'page', defaultValue: 1 },
+      { source: 'HEADER', field: 'x-api-key', target: 'apiKey' },
+    ]);
+
+    assert.strictEqual(plan.size, 3);
+    assert.ok(plan.hasTarget('userId'));
+    assert.ok(plan.hasTarget('page'));
+    assert.ok(plan.hasTarget('apiKey'));
+    assert.strictEqual(plan.hasTarget('nonexistent'), false);
+
+    const userDef = plan.getByTarget('userId');
+    assert.ok(userDef);
+    assert.strictEqual(userDef.source, 'PATH');
+    assert.strictEqual(userDef.field, 'id');
+  });
+
+  // ─── 6. Binding Registry ────────────────────────────────────────────────────
+
+  await t.test('6. HttpBindingRegistry: registers, retrieves, and locks plans', () => {
+    const registry = new HttpBindingRegistry();
+    assert.strictEqual(registry.size, 0);
+    assert.strictEqual(registry.locked, false);
+
+    const plan1 = HttpBindingPlan.create([{ source: 'PATH', field: 'id', target: 'id' }]);
+    registry.register('users.get', plan1);
+
+    assert.strictEqual(registry.size, 1);
+    assert.ok(registry.has('users.get'));
+    assert.strictEqual(registry.get('users.get')?.size, 1);
+    assert.deepStrictEqual(registry.list(), ['users.get']);
+
+    // Duplicate registration throws
+    assert.throws(() => registry.register('users.get', plan1), HttpBindingConfigurationError);
+
+    // Empty ID throws
+    assert.throws(() => registry.register('', plan1), HttpBindingConfigurationError);
+
+    // Lock prevents registration
+    registry.lock();
+    assert.strictEqual(registry.locked, true);
+    assert.throws(() => registry.register('new.plan', plan1), HttpBindingConfigurationError);
+
+    // Lock prevents clear
+    assert.throws(() => registry.clear(), HttpBindingConfigurationError);
+  });
+
+  // ─── 7. Binding Resolver ────────────────────────────────────────────────────
+
+  await t.test(
+    '7. HttpBindingResolver: resolves plan and extracts raw values with defaults',
+    () => {
+      const registry = new HttpBindingRegistry();
+      const plan = HttpBindingPlan.create([
+        { source: 'PATH', field: 'id', target: 'userId' },
+        { source: 'QUERY', field: 'page', target: 'page', defaultValue: 1 },
+        { source: 'QUERY', field: 'limit', target: 'limit', defaultValue: 20 },
+        { source: 'HEADER', field: 'x-tenant', target: 'tenantId', defaultValue: 'default-tenant' },
+      ]);
+      registry.register('search.plan', plan);
+
+      const resolver = new HttpBindingResolver(registry);
+      assert.strictEqual(resolver.resolvePlan('search.plan'), plan);
+      assert.strictEqual(resolver.resolvePlan('missing'), undefined);
+
+      const mockExecCtx = {
+        id: 'e-1',
+        signal: new AbortController().signal,
+      } as unknown as ExecutionContext;
+
+      const ctx: HttpBindingContext = {
+        request: {
+          method: 'GET',
+          url: '/search/usr-99?limit=50',
+          path: '/search/usr-99',
+          pathParameters: { id: 'usr-99' },
+          query: { limit: '50' }, // page is omitted -> should take default 1
+          headers: {}, // tenant is omitted -> should take default 'default-tenant'
+        } as unknown as HttpRequest,
+        parameters: { id: 'usr-99' },
+        metadata: {},
+        executionContext: mockExecCtx,
+      };
+
+      const resolvedValues = resolver.extractValues(plan, ctx);
+      assert.deepStrictEqual(resolvedValues, {
+        userId: 'usr-99',
+        page: 1,
+        limit: '50',
+        tenantId: 'default-tenant',
+      });
     },
   );
 });
