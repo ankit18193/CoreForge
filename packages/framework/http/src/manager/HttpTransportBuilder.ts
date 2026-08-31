@@ -115,6 +115,38 @@ export class HttpTransportBuilder {
     );
   }
 
+  public withController(
+    controller: import('@coreforge/contracts').HttpController,
+    priority?: number,
+  ): HttpTransportBuilder {
+    const router = this._router ?? new HttpRouter();
+    router.registerController(controller, priority);
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      router,
+    );
+  }
+
+  public withEndpoint(
+    endpoint: import('@coreforge/contracts').HttpEndpoint,
+    options?: import('@coreforge/contracts').HttpEndpointOptions,
+  ): HttpTransportBuilder {
+    const router = this._router ?? new HttpRouter();
+    router.registerEndpoint(endpoint, options);
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      router,
+    );
+  }
+
   public build(): HttpTransportManager {
     return new HttpTransportManager({
       application: this._application,

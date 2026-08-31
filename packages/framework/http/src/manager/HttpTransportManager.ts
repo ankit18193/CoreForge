@@ -1,4 +1,5 @@
 import {
+  HttpControllerDiagnosticsSnapshot,
   HttpDiagnosticsSnapshot,
   HttpMiddleware,
   HttpMiddlewareDiagnosticsSnapshot,
@@ -169,9 +170,14 @@ export class HttpTransportManager {
     return this._routingCoordinator?.middlewarePipeline.diagnostics;
   }
 
+  public getControllerDiagnostics(): HttpControllerDiagnosticsSnapshot | undefined {
+    return this._routingCoordinator?.controllerPipeline.coordinator.getDiagnostics();
+  }
+
   public resetDiagnostics(): void {
     this._diagnostics.reset();
     this._routingDiagnostics.reset();
     this._routingCoordinator?.middlewarePipeline.resetDiagnostics();
+    this._routingCoordinator?.controllerPipeline.coordinator.resetDiagnostics();
   }
 }

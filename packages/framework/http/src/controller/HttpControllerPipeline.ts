@@ -115,14 +115,27 @@ export class HttpControllerPipeline {
 
       // If controller constructed an application payload or if we have an execution coordinator
       if (this._executionCoordinator) {
+        const rawBody =
+          request.body &&
+          typeof request.body === 'object' &&
+          'serviceName' in request.body &&
+          'input' in request.body
+            ? (request.body as { input?: { body?: unknown } }).input?.body
+            : request.body;
+
+        const inputPayload =
+          val !== undefined
+            ? val
+            : {
+                parameters: match.parameters,
+                query: request.query ?? {},
+                headers: request.headers,
+                body: rawBody,
+              };
+
         const routedPayload = {
           serviceName: endpoint.operation || match.operation,
-          input: val ?? {
-            parameters: match.parameters,
-            query: request.query ?? {},
-            headers: request.headers,
-            body: request.body,
-          },
+          input: inputPayload,
         };
 
         const routedRequest: HttpRequest = {
@@ -153,6 +166,16 @@ export class HttpControllerPipeline {
 
     // 4. Default execution path without dedicated controller
     if (this._executionCoordinator) {
+      // If request is already a routed request from middleware pipeline, execute directly
+      if (
+        request.body &&
+        typeof request.body === 'object' &&
+        'serviceName' in request.body &&
+        'input' in request.body
+      ) {
+        return this._executionCoordinator.execute<unknown, TRes>(request, options);
+      }
+
       const routedPayload = {
         serviceName: match.operation,
         input: {

@@ -1,14 +1,18 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { test } from 'node:test';
 
 import type {
+  ExecutionContext,
   HttpController,
   HttpControllerContext,
   HttpControllerResult,
   HttpEndpoint,
-  ExecutionContext,
   HttpRequest,
+  HttpResponse,
 } from '@coreforge/contracts';
+import { ApplicationIntegrationBuilder } from '@coreforge/integration';
 
 import {
   HttpControllerCancellationError,
@@ -42,6 +46,8 @@ import {
   HttpRouter,
   HttpRoutingCoordinator,
   HttpRoutingDiagnostics,
+  HttpTransportBuilder,
+  HttpTransportManager,
 } from '../src/index';
 
 test('CoreForge HTTP Controller & Endpoint Infrastructure (@coreforge/http)', async (t) => {
@@ -1284,4 +1290,320 @@ test('CoreForge HTTP Controller & Endpoint Infrastructure (@coreforge/http)', as
       assert.strictEqual(resNoCtrl.status, 200);
     },
   );
+
+  // =========================================================================
+  // 15. COMPLETE E2E PIPELINE (TRANSPORT BUILDER + APP INTEGRATION + CONTROLLER)
+  // =========================================================================
+
+  await t.test(
+    '15. Complete E2E HTTP Pipeline: Request -> Router -> MW -> Endpoint -> Controller -> App -> Kernel -> Result -> Response',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+
+      app.applicationManager.register('accounts.get', {
+        async execute(input: unknown) {
+          const typed = input as { parameters: { accountId: string } };
+          return { accountId: typed.parameters.accountId, balance: 5000 };
+        },
+      });
+
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/accounts/:accountId', 'accounts.get');
+
+      // Middleware
+      router.use({
+        id: 'header-enricher-mw',
+        execute: async (_ctx, next) => {
+          const res = (await next()) as HttpResponse;
+          return {
+            ...res,
+            headers: {
+              ...res.headers,
+              'x-app-version': 'v1.0',
+            },
+          };
+        },
+      });
+
+      // Controller
+      router.registerController({
+        id: 'account.ctrl',
+        name: 'AccountCtrl',
+        execute: async (ctx) => ({
+          parameters: { accountId: ctx.parameters['accountId'] },
+        }),
+      });
+
+      // Endpoint
+      router.registerEndpoint({
+        id: 'account.get.ep',
+        name: 'GetAccountEp',
+        routeId: 'GET:/accounts/:accountId',
+        operation: 'accounts.get',
+        controllerId: 'account.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      assert.ok(manager instanceof HttpTransportManager);
+
+      const res = await manager.handleRoutedRequest<
+        { accountId: string },
+        { accountId: string; balance: number }
+      >({
+        method: 'GET',
+        url: '/accounts/ACC-100',
+        path: '/accounts/ACC-100',
+        headers: {},
+      });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.headers['x-app-version'], 'v1.0');
+      assert.strictEqual(res.body?.accountId, 'ACC-100');
+      assert.strictEqual(res.body?.balance, 5000);
+
+      const ctrlDiag = manager.getControllerDiagnostics();
+      assert.ok(ctrlDiag);
+      assert.strictEqual(ctrlDiag.totalExecutions, 1);
+      assert.strictEqual(ctrlDiag.successfulExecutions, 1);
+
+      await manager.stop();
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 16. E2E FAILURE MAPPING & NO CREDENTIAL LEAKS
+  // =========================================================================
+
+  await t.test(
+    '16. Failure Handling: Controller / Application errors map cleanly without credential leaks',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+
+      app.applicationManager.register('secure.op', {
+        async execute() {
+          throw new Error('Database password was db_pass_123456');
+        },
+      });
+
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/secure/data', 'secure.op');
+
+      router.registerController({
+        id: 'secure.ctrl',
+        name: 'SecureCtrl',
+        execute: async () => ({}),
+      });
+
+      router.registerEndpoint({
+        id: 'secure.ep',
+        name: 'SecureEp',
+        routeId: 'GET:/secure/data',
+        operation: 'secure.op',
+        controllerId: 'secure.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const res = await manager.handleRoutedRequest({
+        method: 'GET',
+        url: '/secure/data',
+        path: '/secure/data',
+        headers: { authorization: 'Bearer secret-token-xyz' },
+      });
+
+      assert.strictEqual(res.status, 500);
+      // Credentials should never leak in the response body
+      const bodyStr = JSON.stringify(res.body ?? '');
+      assert.strictEqual(bodyStr.includes('secret-token-xyz'), false);
+
+      await manager.stop();
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 17. 1,000 CONCURRENT E2E OPERATIONS WITH CONTROLLERS
+  // =========================================================================
+
+  await t.test(
+    '17. High Concurrency: 1,000 concurrent HTTP requests through Controller pipeline',
+    async () => {
+      const CONCURRENCY = 1000;
+      const app = ApplicationIntegrationBuilder.create().build();
+
+      app.applicationManager.register('compute.hash', {
+        async execute(input: unknown) {
+          const typed = input as { index: number };
+          return { result: `computed-${typed.index}` };
+        },
+      });
+
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/compute/:idx', 'compute.hash');
+
+      router.registerController({
+        id: 'compute.ctrl',
+        name: 'ComputeCtrl',
+        execute: async (ctx) => ({
+          index: Number(ctx.parameters['idx']),
+        }),
+      });
+
+      router.registerEndpoint({
+        id: 'compute.ep',
+        name: 'ComputeEp',
+        routeId: 'GET:/compute/:idx',
+        operation: 'compute.hash',
+        controllerId: 'compute.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withAutoStart(true)
+        .build();
+
+      const tasks = Array.from({ length: CONCURRENCY }, async (_, i) => {
+        const res = await manager.handleRoutedRequest<unknown, { result: string }>({
+          method: 'GET',
+          url: `/compute/${i}`,
+          path: `/compute/${i}`,
+          headers: { 'x-req': String(i) },
+        });
+
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.body?.result, `computed-${i}`);
+      });
+
+      await Promise.all(tasks);
+
+      const diag = manager.getControllerDiagnostics();
+      assert.ok(diag);
+      assert.strictEqual(diag.totalExecutions, CONCURRENCY);
+      assert.strictEqual(diag.successfulExecutions, CONCURRENCY);
+      assert.strictEqual(diag.activeExecutions, 0);
+
+      await manager.stop();
+      await app.stop();
+    },
+  );
+
+  // =========================================================================
+  // 18. DIAGNOSTICS SECURITY: ZERO SENSITIVE DATA RETENTION
+  // =========================================================================
+
+  await t.test(
+    '18. Diagnostics Security: Pure numerical tracking with zero payload/header retention',
+    () => {
+      const diag = new HttpControllerDiagnostics();
+      diag.recordExecutionStarted();
+      diag.recordExecutionSuccess(5.2);
+      diag.recordExecutionFailure(2.1);
+      diag.recordExecutionCancelled(1.0);
+      diag.recordExecutionSkipped();
+      diag.recordRegistrationFailure();
+
+      const snapshot = diag.getSnapshot();
+      const keys = Object.keys(snapshot);
+
+      // Verify all properties are strictly numbers
+      for (const key of keys) {
+        const val = (snapshot as unknown as Record<string, unknown>)[key];
+        assert.strictEqual(
+          typeof val,
+          'number',
+          `Diagnostic snapshot key '${key}' must be a number, got ${typeof val}`,
+        );
+      }
+
+      // Verify zero sensitive data keys
+      const forbiddenKeys = [
+        'url',
+        'headers',
+        'cookies',
+        'authorization',
+        'body',
+        'parameters',
+        'executionId',
+        'traceId',
+        'stack',
+        'credentials',
+        'token',
+      ];
+
+      for (const fk of forbiddenKeys) {
+        assert.strictEqual(
+          keys.includes(fk),
+          false,
+          `Forbidden sensitive key detected in diagnostics snapshot: ${fk}`,
+        );
+      }
+    },
+  );
+
+  // =========================================================================
+  // 19. ARCHITECTURAL BOUNDARY: FORBIDDEN DEPENDENCIES & DIRECT IMPORTS
+  // =========================================================================
+
+  await t.test('19. Architectural Boundary: Zero forbidden dependencies in @coreforge/http', () => {
+    const packageJsonPath = path.resolve(__dirname, '../../package.json');
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const deps = Object.keys({
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+      ...pkg.peerDependencies,
+    });
+
+    const forbidden = [
+      'express',
+      'fastify',
+      'koa',
+      '@nestjs/core',
+      '@nestjs/common',
+      'redis',
+      'ioredis',
+      'mongoose',
+      'typeorm',
+      'prisma',
+      'pg',
+      'mysql',
+      'sqlite3',
+      'amqplib',
+      'rabbitmq',
+      'kafka',
+    ];
+
+    for (const f of forbidden) {
+      assert.strictEqual(
+        deps.includes(f),
+        false,
+        `Forbidden dependency detected in @coreforge/http: ${f}`,
+      );
+    }
+  });
 });
