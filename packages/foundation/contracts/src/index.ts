@@ -2361,3 +2361,81 @@ export interface HttpMiddlewareRegistry {
 export interface HttpMiddlewareResolver {
   resolve(): readonly HttpMiddleware[];
 }
+
+// ============================================================================
+// Phase 8.5: HTTP Controller & Endpoint Infrastructure Contracts
+// ============================================================================
+
+export type HttpControllerResultState = 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'SKIPPED';
+
+export interface HttpControllerContext<TReq = unknown> {
+  readonly request: HttpRequest<TReq>;
+  readonly route: HttpMiddlewareRouteInfo;
+  readonly parameters: Readonly<Record<string, string>>;
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly transportContext?: TransportContext | undefined;
+  readonly executionContext: ExecutionContext;
+}
+
+export interface HttpController<TContext = HttpControllerContext, TResult = unknown> {
+  readonly id: string;
+  readonly name: string;
+  readonly priority?: number | undefined;
+  execute(context: TContext): Promise<TResult> | TResult;
+}
+
+export interface HttpEndpoint {
+  readonly id: string;
+  readonly name: string;
+  readonly routeId: string;
+  readonly operation: string;
+  readonly controllerId: string;
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly enabled: boolean;
+  readonly priority: number;
+}
+
+export interface HttpEndpointOptions {
+  readonly priority?: number | undefined;
+  readonly enabled?: boolean | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpControllerResult<TValue = unknown> {
+  readonly success: boolean;
+  readonly value?: TValue | undefined;
+  readonly state: HttpControllerResultState;
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly durationMs: number;
+}
+
+export interface HttpControllerDiagnosticsSnapshot {
+  readonly totalExecutions: number;
+  readonly successfulExecutions: number;
+  readonly failedExecutions: number;
+  readonly cancelledExecutions: number;
+  readonly skippedExecutions: number;
+  readonly activeExecutions: number;
+  readonly registrationFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+}
+
+export interface HttpControllerRegistry {
+  readonly size: number;
+  readonly locked: boolean;
+  register(controller: HttpController, priority?: number): void;
+  get(controllerId: string): HttpController | undefined;
+  has(controllerId: string): boolean;
+  lock(): void;
+}
+
+export interface HttpEndpointRegistry {
+  readonly size: number;
+  readonly locked: boolean;
+  register(endpoint: HttpEndpoint, options?: HttpEndpointOptions): void;
+  get(endpointId: string): HttpEndpoint | undefined;
+  getByRouteId(routeId: string): HttpEndpoint | undefined;
+  has(endpointId: string): boolean;
+  lock(): void;
+}

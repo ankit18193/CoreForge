@@ -64,3 +64,9 @@ export * from './diagnostics/HttpMiddlewareDiagnostics';
 export * from './middleware/HttpMiddlewareExecutor';
 export * from './middleware/HttpMiddlewareCoordinator';
 export * from './middleware/HttpMiddlewarePipeline';
+
+// Controller & Endpoint (Phase 8.5)
+export * from './types/httpControllerTypes';
+export * from './errors/HttpControllerErrors';
+export * from './controller/HttpControllerValidator';
+export * from './controller/HttpControllerSnapshot';
