@@ -70,3 +70,7 @@ export * from './types/httpControllerTypes';
 export * from './errors/HttpControllerErrors';
 export * from './controller/HttpControllerValidator';
 export * from './controller/HttpControllerSnapshot';
+export * from './controller/HttpControllerRegistry';
+export * from './controller/HttpControllerResolver';
+export * from './endpoint/HttpEndpointRegistry';
+export * from './endpoint/HttpEndpointResolver';

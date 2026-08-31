@@ -17,6 +17,8 @@ import {
   HttpControllerError,
   HttpControllerExecutionError,
   HttpControllerRegistrationError,
+  HttpControllerRegistry,
+  HttpControllerResolver,
   HttpControllerSnapshot,
   HttpControllerStateError,
   HttpControllerTimeoutError,
@@ -26,6 +28,8 @@ import {
   HttpEndpointError,
   HttpEndpointNotFoundError,
   HttpEndpointRegistrationError,
+  HttpEndpointRegistry,
+  HttpEndpointResolver,
   HttpEndpointValidationError,
   HttpError,
 } from '../src/index';
@@ -316,4 +320,255 @@ test('CoreForge HTTP Controller & Endpoint Infrastructure (@coreforge/http)', as
     assert.ok(Object.isFrozen(snapshot));
     assert.strictEqual(snapshot.id, 'c.1');
   });
+
+  // ─── 5. Controller Registry ─────────────────────────────────────────────────
+
+  await t.test('5. Controller Registry: registers and retrieves controllers', () => {
+    const registry = new HttpControllerRegistry();
+    assert.strictEqual(registry.size, 0);
+    assert.strictEqual(registry.locked, false);
+
+    const ctrl: HttpController = { id: 'ctrl.a', name: 'CtrlA', execute: async () => ({}) };
+    registry.register(ctrl, 10);
+
+    assert.strictEqual(registry.size, 1);
+    assert.ok(registry.has('ctrl.a'));
+    assert.strictEqual(registry.get('ctrl.a')?.id, 'ctrl.a');
+  });
+
+  await t.test('5b. Controller Registry: rejects duplicate IDs', () => {
+    const registry = new HttpControllerRegistry();
+    const ctrl: HttpController = { id: 'ctrl.dup', name: 'Dup', execute: async () => ({}) };
+    registry.register(ctrl);
+
+    assert.throws(() => registry.register(ctrl), HttpControllerDuplicateError);
+  });
+
+  await t.test('5c. Controller Registry: rejects registration after lock', () => {
+    const registry = new HttpControllerRegistry();
+    registry.lock();
+    assert.strictEqual(registry.locked, true);
+
+    const ctrl: HttpController = { id: 'ctrl.x', name: 'X', execute: async () => ({}) };
+    assert.throws(() => registry.register(ctrl), HttpControllerRegistrationError);
+  });
+
+  await t.test('5d. Controller Registry: rejects clear when locked', () => {
+    const registry = new HttpControllerRegistry();
+    registry.register({ id: 'c', name: 'C', execute: async () => ({}) });
+    registry.lock();
+    assert.throws(
+      () => (registry as unknown as { clear(): void }).clear(),
+      HttpControllerStateError,
+    );
+  });
+
+  // ─── 6. Controller Resolver ─────────────────────────────────────────────────
+
+  await t.test('6. Controller Resolver: deterministic priority DESC then sequence ASC', () => {
+    const registry = new HttpControllerRegistry();
+    const c1: HttpController = { id: 'c1', name: 'C1', execute: async () => ({}) };
+    const c2: HttpController = { id: 'c2', name: 'C2', execute: async () => ({}) };
+    const c3: HttpController = { id: 'c3', name: 'C3', execute: async () => ({}) };
+
+    registry.register(c1, 5); // seq=1, priority=5
+    registry.register(c2, 10); // seq=2, priority=10  ← highest
+    registry.register(c3, 5); // seq=3, priority=5
+
+    const resolver = new HttpControllerResolver(registry);
+    const resolved = resolver.resolve();
+
+    assert.strictEqual(resolved[0].id, 'c2'); // priority 10 first
+    assert.strictEqual(resolved[1].id, 'c1'); // priority 5, seq 1 before seq 3
+    assert.strictEqual(resolved[2].id, 'c3');
+  });
+
+  await t.test('6b. Controller Resolver: resolves by ID', () => {
+    const registry = new HttpControllerRegistry();
+    registry.register({ id: 'ctrl.lookup', name: 'L', execute: async () => ({}) });
+    const resolver = new HttpControllerResolver(registry);
+
+    assert.strictEqual(resolver.resolveById('ctrl.lookup')?.id, 'ctrl.lookup');
+    assert.strictEqual(resolver.resolveById('ctrl.missing'), undefined);
+  });
+
+  // ─── 7. Endpoint Registry ───────────────────────────────────────────────────
+
+  await t.test('7. Endpoint Registry: registers and retrieves endpoints', () => {
+    const registry = new HttpEndpointRegistry();
+    assert.strictEqual(registry.size, 0);
+
+    const ep: HttpEndpoint = {
+      id: 'ep.users.get',
+      name: 'GetUser',
+      routeId: 'users.get',
+      operation: 'users.get',
+      controllerId: 'user.ctrl',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    };
+    registry.register(ep);
+
+    assert.strictEqual(registry.size, 1);
+    assert.ok(registry.has('ep.users.get'));
+    assert.strictEqual(registry.get('ep.users.get')?.id, 'ep.users.get');
+    assert.strictEqual(registry.getByRouteId('users.get')?.id, 'ep.users.get');
+  });
+
+  await t.test('7b. Endpoint Registry: rejects duplicate endpoint IDs', () => {
+    const registry = new HttpEndpointRegistry();
+    const ep: HttpEndpoint = {
+      id: 'ep.dup',
+      name: 'Dup',
+      routeId: 'route.dup',
+      operation: 'op',
+      controllerId: 'c',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    };
+    registry.register(ep);
+    assert.throws(() => registry.register(ep), HttpEndpointDuplicateError);
+  });
+
+  await t.test('7c. Endpoint Registry: rejects duplicate route/controller bindings', () => {
+    const registry = new HttpEndpointRegistry();
+    const ep1: HttpEndpoint = {
+      id: 'ep.r1.a',
+      name: 'A',
+      routeId: 'route.shared',
+      operation: 'op',
+      controllerId: 'c',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    };
+    const ep2: HttpEndpoint = {
+      id: 'ep.r1.b',
+      name: 'B',
+      routeId: 'route.shared', // same routeId
+      operation: 'op',
+      controllerId: 'c',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    };
+    registry.register(ep1);
+    assert.throws(() => registry.register(ep2), HttpEndpointRegistrationError);
+  });
+
+  await t.test('7d. Endpoint Registry: rejects registration after lock', () => {
+    const registry = new HttpEndpointRegistry();
+    registry.lock();
+    const ep: HttpEndpoint = {
+      id: 'ep.locked',
+      name: 'L',
+      routeId: 'r',
+      operation: 'op',
+      controllerId: 'c',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    };
+    assert.throws(() => registry.register(ep), HttpEndpointRegistrationError);
+  });
+
+  // ─── 8. Endpoint Resolver ───────────────────────────────────────────────────
+
+  await t.test('8. Endpoint Resolver: deterministic priority DESC then sequence ASC', () => {
+    const registry = new HttpEndpointRegistry();
+
+    const makeEp = (id: string, routeId: string, priority: number): HttpEndpoint => ({
+      id,
+      name: id,
+      routeId,
+      operation: routeId,
+      controllerId: 'c',
+      metadata: {},
+      enabled: true,
+      priority,
+    });
+
+    registry.register(makeEp('ep.a', 'route.a', 5));
+    registry.register(makeEp('ep.b', 'route.b', 10));
+    registry.register(makeEp('ep.c', 'route.c', 5));
+
+    const resolver = new HttpEndpointResolver(registry);
+    const resolved = resolver.resolve();
+
+    assert.strictEqual(resolved[0].id, 'ep.b'); // priority 10
+    assert.strictEqual(resolved[1].id, 'ep.a'); // priority 5, registered first
+    assert.strictEqual(resolved[2].id, 'ep.c');
+  });
+
+  await t.test('8b. Endpoint Resolver: filters disabled endpoints', () => {
+    const registry = new HttpEndpointRegistry();
+
+    registry.register({
+      id: 'ep.enabled',
+      name: 'E',
+      routeId: 'route.en',
+      operation: 'op',
+      controllerId: 'c',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    });
+    registry.register({
+      id: 'ep.disabled',
+      name: 'D',
+      routeId: 'route.dis',
+      operation: 'op',
+      controllerId: 'c',
+      metadata: {},
+      enabled: false,
+      priority: 0,
+    });
+
+    const resolver = new HttpEndpointResolver(registry);
+    const resolved = resolver.resolve();
+
+    assert.strictEqual(resolved.length, 1);
+    assert.strictEqual(resolved[0].id, 'ep.enabled');
+  });
+
+  await t.test('8c. Endpoint Resolver: resolves by routeId', () => {
+    const registry = new HttpEndpointRegistry();
+    registry.register({
+      id: 'ep.r',
+      name: 'R',
+      routeId: 'route.lookup',
+      operation: 'op',
+      controllerId: 'c',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    });
+    const resolver = new HttpEndpointResolver(registry);
+
+    assert.strictEqual(resolver.resolveByRouteId('route.lookup')?.id, 'ep.r');
+    assert.strictEqual(resolver.resolveByRouteId('route.missing'), undefined);
+  });
+
+  await t.test(
+    '9. Concurrent Registration: 500 concurrent controllers register without collision',
+    async () => {
+      const registry = new HttpControllerRegistry();
+      const count = 500;
+
+      await Promise.all(
+        Array.from({ length: count }, (_, i) =>
+          Promise.resolve().then(() =>
+            registry.register({ id: `ctrl.${i}`, name: `Ctrl${i}`, execute: async () => ({}) }),
+          ),
+        ),
+      );
+
+      assert.strictEqual(registry.size, count);
+      for (let i = 0; i < count; i++) {
+        assert.ok(registry.has(`ctrl.${i}`));
+      }
+    },
+  );
 });
