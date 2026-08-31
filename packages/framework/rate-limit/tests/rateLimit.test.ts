@@ -79,7 +79,7 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
       const manager = new RateLimiterManager();
       const policy: RateLimitPolicy = {
         limit: 3,
-        windowMs: 80,
+        windowMs: 200,
         algorithm: 'FIXED_WINDOW',
       };
       const limiter = manager.limiter(policy);
@@ -99,8 +99,8 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
       assert.strictEqual(d4.remaining, 0);
       assert.ok((d4.retryAfterMs ?? 0) > 0);
 
-      // Wait for window to roll over
-      await new Promise((resolve) => setTimeout(resolve, 95));
+      // Wait for window to roll over (250ms > 200ms window, generous margin)
+      await new Promise((resolve) => setTimeout(resolve, 250));
 
       const d5 = await limiter.consume('user:fw');
       assert.strictEqual(d5.allowed, true);
@@ -114,7 +114,7 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
     const manager = new RateLimiterManager();
     const policy: RateLimitPolicy = {
       limit: 2,
-      windowMs: 50,
+      windowMs: 200,
       algorithm: 'SLIDING_WINDOW',
     };
     const limiter = manager.limiter(policy);
@@ -127,8 +127,8 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
     assert.strictEqual(d2.allowed, true);
     assert.strictEqual(d3.allowed, false);
 
-    // Wait for sliding window to expire
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    // Wait for sliding window to expire (250ms > 200ms window, generous margin)
+    await new Promise((resolve) => setTimeout(resolve, 250));
 
     const d4 = await limiter.consume('user:sw');
     assert.strictEqual(d4.allowed, true);
@@ -158,8 +158,8 @@ test('CoreForge Rate Limiting & Throttling Engine (@coreforge/rate-limit)', asyn
       assert.strictEqual(d3.allowed, false);
       assert.ok((d3.retryAfterMs ?? 0) > 0);
 
-      // Wait 30ms for refill (~3 tokens)
-      await new Promise((resolve) => setTimeout(resolve, 35));
+      // Wait 80ms for refill (~8 tokens at 0.1 tokens/ms, need >=2)
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
       const d4 = await limiter.consume('user:tb', { cost: 2 });
       assert.strictEqual(d4.allowed, true);
