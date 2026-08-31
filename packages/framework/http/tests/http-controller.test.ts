@@ -13,9 +13,13 @@ import type {
 import {
   HttpControllerCancellationError,
   HttpControllerConfigurationError,
+  HttpControllerCoordinator,
+  HttpControllerDiagnostics,
   HttpControllerDuplicateError,
   HttpControllerError,
   HttpControllerExecutionError,
+  HttpControllerExecutor,
+  HttpControllerProfiler,
   HttpControllerRegistrationError,
   HttpControllerRegistry,
   HttpControllerResolver,
@@ -571,4 +575,346 @@ test('CoreForge HTTP Controller & Endpoint Infrastructure (@coreforge/http)', as
       }
     },
   );
+
+  // ─── 10. Controller Executor ───────────────────────────────────────────────
+
+  await t.test('10. Controller Executor: executes controller successfully', async () => {
+    const diagnostics = new HttpControllerDiagnostics();
+    const executor = new HttpControllerExecutor(diagnostics);
+
+    const controller: HttpController = {
+      id: 'users.get.ctrl',
+      name: 'GetUserCtrl',
+      execute: async (ctx) => ({ id: ctx.parameters['id'], name: 'Alice' }),
+    };
+
+    const mockExecCtx = {
+      signal: new AbortController().signal,
+      id: 'e1',
+    } as unknown as ExecutionContext;
+    const ctx: HttpControllerContext = {
+      request: {
+        method: 'GET',
+        url: '/users/42',
+        path: '/users/42',
+        headers: {},
+        query: {},
+      } as unknown as HttpRequest,
+      route: { id: 'users.get', method: 'GET', path: '/users/:id', operation: 'users.get' },
+      parameters: { id: '42' },
+      metadata: {},
+      executionContext: mockExecCtx,
+    };
+
+    const result = await executor.execute(controller, ctx);
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.state, 'COMPLETED');
+    assert.deepStrictEqual(result.value, { id: '42', name: 'Alice' });
+    assert.ok(result.durationMs >= 0);
+
+    const snap = diagnostics.getSnapshot();
+    assert.strictEqual(snap.totalExecutions, 1);
+    assert.strictEqual(snap.successfulExecutions, 1);
+    assert.strictEqual(snap.activeExecutions, 0);
+  });
+
+  await t.test('10b. Controller Executor: handles execution failures safely', async () => {
+    const diagnostics = new HttpControllerDiagnostics();
+    const executor = new HttpControllerExecutor(diagnostics);
+
+    const failingCtrl: HttpController = {
+      id: 'fail.ctrl',
+      name: 'FailCtrl',
+      execute: async () => {
+        throw new Error('Database connection failed');
+      },
+    };
+
+    const mockExecCtx = {
+      signal: new AbortController().signal,
+      id: 'e2',
+    } as unknown as ExecutionContext;
+    const ctx: HttpControllerContext = {
+      request: {
+        method: 'GET',
+        url: '/fail',
+        path: '/fail',
+        headers: {},
+        query: {},
+      } as unknown as HttpRequest,
+      route: { id: 'fail', method: 'GET', path: '/fail', operation: 'fail' },
+      parameters: {},
+      metadata: {},
+      executionContext: mockExecCtx,
+    };
+
+    const result = await executor.execute(failingCtrl, ctx);
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.state, 'FAILED');
+
+    const snap = diagnostics.getSnapshot();
+    assert.strictEqual(snap.totalExecutions, 1);
+    assert.strictEqual(snap.failedExecutions, 1);
+    assert.strictEqual(snap.activeExecutions, 0);
+  });
+
+  await t.test('10c. Controller Executor: handles timeout cancellation', async () => {
+    const diagnostics = new HttpControllerDiagnostics();
+    const executor = new HttpControllerExecutor(diagnostics);
+
+    const slowCtrl: HttpController = {
+      id: 'slow.ctrl',
+      name: 'SlowCtrl',
+      execute: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return { done: true };
+      },
+    };
+
+    const mockExecCtx = {
+      signal: new AbortController().signal,
+      id: 'e3',
+    } as unknown as ExecutionContext;
+    const ctx: HttpControllerContext = {
+      request: {
+        method: 'GET',
+        url: '/slow',
+        path: '/slow',
+        headers: {},
+        query: {},
+      } as unknown as HttpRequest,
+      route: { id: 'slow', method: 'GET', path: '/slow', operation: 'slow' },
+      parameters: {},
+      metadata: {},
+      executionContext: mockExecCtx,
+    };
+
+    const result = await executor.execute(slowCtrl, ctx, { timeoutMs: 50 });
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.state, 'FAILED');
+
+    const snap = diagnostics.getSnapshot();
+    assert.strictEqual(snap.totalExecutions, 1);
+    assert.strictEqual(snap.failedExecutions, 1);
+    assert.strictEqual(snap.activeExecutions, 0);
+  });
+
+  await t.test('10d. Controller Executor: handles early and in-flight cancellation', async () => {
+    const diagnostics = new HttpControllerDiagnostics();
+    const executor = new HttpControllerExecutor(diagnostics);
+
+    const ctrl: HttpController = {
+      id: 'abort.ctrl',
+      name: 'AbortCtrl',
+      execute: async () => ({ done: true }),
+    };
+
+    // Early abort
+    const abortCtrl = new AbortController();
+    abortCtrl.abort();
+
+    const mockExecCtx = { signal: abortCtrl.signal, id: 'e4' } as unknown as ExecutionContext;
+    const ctx: HttpControllerContext = {
+      request: {
+        method: 'GET',
+        url: '/abort',
+        path: '/abort',
+        headers: {},
+        query: {},
+      } as unknown as HttpRequest,
+      route: { id: 'abort', method: 'GET', path: '/abort', operation: 'abort' },
+      parameters: {},
+      metadata: {},
+      executionContext: mockExecCtx,
+    };
+
+    const result = await executor.execute(ctrl, ctx);
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.state, 'CANCELLED');
+
+    const snap = diagnostics.getSnapshot();
+    assert.strictEqual(snap.cancelledExecutions, 1);
+  });
+
+  // ─── 11. Controller Coordinator ────────────────────────────────────────────
+
+  await t.test(
+    '11. Controller Coordinator: registers and executes endpoints via routeId',
+    async () => {
+      const coordinator = new HttpControllerCoordinator();
+
+      coordinator.registerController({
+        id: 'items.ctrl',
+        name: 'ItemsCtrl',
+        execute: async (ctx) => ({ itemId: ctx.parameters['id'], status: 'active' }),
+      });
+
+      coordinator.registerEndpoint({
+        id: 'items.get.ep',
+        name: 'GetItemEndpoint',
+        routeId: 'items.get',
+        operation: 'items.get',
+        controllerId: 'items.ctrl',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const mockExecCtx = {
+        signal: new AbortController().signal,
+        id: 'e5',
+      } as unknown as ExecutionContext;
+      const ctx: HttpControllerContext = {
+        request: {
+          method: 'GET',
+          url: '/items/99',
+          path: '/items/99',
+          headers: {},
+          query: {},
+        } as unknown as HttpRequest,
+        route: { id: 'items.get', method: 'GET', path: '/items/:id', operation: 'items.get' },
+        parameters: { id: '99' },
+        metadata: {},
+        executionContext: mockExecCtx,
+      };
+
+      const result = await coordinator.executeByRouteId('items.get', ctx);
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.state, 'COMPLETED');
+      assert.deepStrictEqual(result.value, { itemId: '99', status: 'active' });
+
+      // Missing routeId throws HttpEndpointNotFoundError
+      await assert.rejects(
+        async () => coordinator.executeByRouteId('missing.route', ctx),
+        HttpEndpointNotFoundError,
+      );
+    },
+  );
+
+  await t.test('11b. Controller Coordinator: throws when controller is missing', async () => {
+    const coordinator = new HttpControllerCoordinator();
+
+    coordinator.registerEndpoint({
+      id: 'orphan.ep',
+      name: 'OrphanEndpoint',
+      routeId: 'orphan.route',
+      operation: 'orphan',
+      controllerId: 'non.existent.ctrl',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    });
+
+    const mockExecCtx = {
+      signal: new AbortController().signal,
+      id: 'e6',
+    } as unknown as ExecutionContext;
+    const ctx: HttpControllerContext = {
+      request: {
+        method: 'GET',
+        url: '/orphan',
+        path: '/orphan',
+        headers: {},
+        query: {},
+      } as unknown as HttpRequest,
+      route: { id: 'orphan.route', method: 'GET', path: '/orphan', operation: 'orphan' },
+      parameters: {},
+      metadata: {},
+      executionContext: mockExecCtx,
+    };
+
+    await assert.rejects(
+      async () => coordinator.executeByRouteId('orphan.route', ctx),
+      HttpControllerExecutionError,
+    );
+  });
+
+  // ─── 12. Diagnostics Numerical Purity & Profiler ──────────────────────────
+
+  await t.test('12a. Profiler: measures elapsed execution time accurately', async () => {
+    const profiler = new HttpControllerProfiler().start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const duration = profiler.stop();
+    assert.ok(duration >= 5, `Expected duration >= 5ms, got ${duration}`);
+  });
+
+  await t.test(
+    '12b. Diagnostics: snapshot contains pure numerical metrics and no retained objects',
+    () => {
+      const diagnostics = new HttpControllerDiagnostics();
+      diagnostics.recordExecutionStarted();
+      diagnostics.recordExecutionSuccess(15);
+      diagnostics.recordExecutionStarted();
+      diagnostics.recordExecutionFailure(25);
+      diagnostics.recordRegistrationFailure();
+
+      const snapshot = diagnostics.getSnapshot();
+      assert.strictEqual(snapshot.totalExecutions, 2);
+      assert.strictEqual(snapshot.successfulExecutions, 1);
+      assert.strictEqual(snapshot.failedExecutions, 1);
+      assert.strictEqual(snapshot.registrationFailures, 1);
+      assert.strictEqual(snapshot.activeExecutions, 0);
+      assert.strictEqual(snapshot.averageDurationMs, 20);
+      assert.strictEqual(snapshot.slowestDurationMs, 25);
+
+      diagnostics.reset();
+      const resetSnap = diagnostics.getSnapshot();
+      assert.strictEqual(resetSnap.totalExecutions, 0);
+    },
+  );
+
+  // ─── 13. Concurrency ───────────────────────────────────────────────────────
+
+  await t.test('13. Concurrency: 1,000 concurrent executions complete safely', async () => {
+    const coordinator = new HttpControllerCoordinator();
+    coordinator.registerController({
+      id: 'concurrent.ctrl',
+      name: 'ConcurrentCtrl',
+      execute: async (ctx) => ({ id: ctx.parameters['id'] }),
+    });
+    coordinator.registerEndpoint({
+      id: 'concurrent.ep',
+      name: 'ConcurrentEp',
+      routeId: 'concurrent.route',
+      operation: 'concurrent',
+      controllerId: 'concurrent.ctrl',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    });
+
+    const count = 1000;
+    const tasks = Array.from({ length: count }, (_, i) => {
+      const mockExecCtx = {
+        signal: new AbortController().signal,
+        id: `e-${i}`,
+      } as unknown as ExecutionContext;
+      const ctx: HttpControllerContext = {
+        request: {
+          method: 'GET',
+          url: `/c/${i}`,
+          path: `/c/${i}`,
+          headers: {},
+          query: {},
+        } as unknown as HttpRequest,
+        route: { id: 'concurrent.route', method: 'GET', path: '/c/:id', operation: 'concurrent' },
+        parameters: { id: String(i) },
+        metadata: {},
+        executionContext: mockExecCtx,
+      };
+      return coordinator.executeByRouteId('concurrent.route', ctx);
+    });
+
+    const results = await Promise.all(tasks);
+    assert.strictEqual(results.length, count);
+    for (let i = 0; i < count; i++) {
+      assert.strictEqual(results[i].success, true);
+      assert.deepStrictEqual(results[i].value, { id: String(i) });
+    }
+
+    const diag = coordinator.getDiagnostics();
+    assert.strictEqual(diag.totalExecutions, count);
+    assert.strictEqual(diag.successfulExecutions, count);
+    assert.strictEqual(diag.activeExecutions, 0);
+  });
 });

@@ -74,3 +74,7 @@ export * from './controller/HttpControllerRegistry';
 export * from './controller/HttpControllerResolver';
 export * from './endpoint/HttpEndpointRegistry';
 export * from './endpoint/HttpEndpointResolver';
+export * from './internal/HttpControllerProfiler';
+export * from './diagnostics/HttpControllerDiagnostics';
+export * from './controller/HttpControllerExecutor';
+export * from './controller/HttpControllerCoordinator';
