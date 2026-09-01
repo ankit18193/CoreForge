@@ -109,3 +109,9 @@ export * from './response/HttpResponseTransformer';
 export * from './internal/HttpSerializationProfiler';
 export * from './diagnostics/HttpSerializationDiagnostics';
 export * from './response/HttpSerializationEngine';
+
+// Error Mapping Engine (Phase 8.8)
+export * from './types/httpErrorTypes';
+export * from './errors/HttpErrorMappingErrors';
+export * from './response/error/HttpErrorMappingValidator';
+export * from './response/error/HttpPublicErrorSnapshot';

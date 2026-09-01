@@ -2583,3 +2583,61 @@ export interface HttpResponseDiagnosticsSnapshot {
   readonly averageDurationMs: number;
   readonly slowestDurationMs: number;
 }
+
+// ============================================================================
+// HTTP Transport Error Mapping Contracts (Phase 8.8)
+// ============================================================================
+
+export interface HttpPublicError {
+  readonly code: string;
+  readonly message: string;
+  readonly details?: unknown;
+  readonly timestamp?: number | undefined;
+}
+
+export interface HttpErrorMappingContext {
+  readonly requestId?: string | undefined;
+  readonly method?: string | undefined;
+  readonly url?: string | undefined;
+  readonly path?: string | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+  readonly executionContext?: ExecutionContext | undefined;
+}
+
+export interface HttpErrorMappingResult {
+  readonly status: number;
+  readonly publicError: HttpPublicError;
+  readonly headers?: HttpHeaders | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpErrorMapperRegistrationOptions {
+  readonly id?: string | undefined;
+  readonly name?: string | undefined;
+  readonly priority?: number | undefined;
+  readonly code?: string | undefined;
+  readonly errorType?: (new (...args: unknown[]) => Error) | undefined;
+  readonly predicate?: ((error: unknown) => boolean) | undefined;
+}
+
+export interface HttpErrorMapper<TError = unknown> {
+  readonly id: string;
+  readonly name?: string | undefined;
+  readonly priority?: number | undefined;
+  canMap?(error: unknown): boolean;
+  map(
+    error: TError,
+    context: HttpErrorMappingContext,
+  ): HttpErrorMappingResult | Promise<HttpErrorMappingResult>;
+}
+
+export interface HttpErrorMappingDiagnosticsSnapshot {
+  readonly totalErrorsMapped: number;
+  readonly successfulMappings: number;
+  readonly fallbackMappings: number;
+  readonly mappingFailures: number;
+  readonly resolutionFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+  readonly statusDistribution: Readonly<Record<number, number>>;
+}
