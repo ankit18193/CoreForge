@@ -1,9 +1,23 @@
-import { TransportManager } from '@coreforge/contracts';
+import {
+  HttpResponseTransformer,
+  HttpSerializer,
+  HttpSerializerOptions,
+  TransportManager,
+} from '@coreforge/contracts';
 import { ApplicationIntegration } from '@coreforge/integration';
 
 import { HttpTransportManager } from './HttpTransportManager';
+import { HttpSerializationEngine } from '../response/HttpSerializationEngine';
+import { HttpSerializerRegistry } from '../response/HttpSerializerRegistry';
+import { HttpSerializerResolver } from '../response/HttpSerializerResolver';
+import { HttpJsonSerializer } from '../response/serializers/HttpJsonSerializer';
 import { HttpRouter } from '../routing/HttpRouter';
 import { HttpErrorMappingOptions } from '../types/httpTypes';
+
+export interface SerializerRegistrationItem {
+  readonly serializer: HttpSerializer;
+  readonly options?: HttpSerializerOptions | undefined;
+}
 
 export class HttpTransportBuilder {
   private readonly _application?: ApplicationIntegration | undefined;
@@ -12,6 +26,8 @@ export class HttpTransportBuilder {
   private readonly _errorMappingOptions?: HttpErrorMappingOptions | undefined;
   private readonly _autoStart?: boolean | undefined;
   private readonly _router?: HttpRouter | undefined;
+  private readonly _serializers: readonly SerializerRegistrationItem[];
+  private readonly _responseTransformer?: HttpResponseTransformer | undefined;
 
   private constructor(
     application?: ApplicationIntegration,
@@ -20,6 +36,8 @@ export class HttpTransportBuilder {
     errorMappingOptions?: HttpErrorMappingOptions,
     autoStart?: boolean,
     router?: HttpRouter,
+    serializers: readonly SerializerRegistrationItem[] = [],
+    responseTransformer?: HttpResponseTransformer,
   ) {
     this._application = application;
     this._transportManager = transportManager;
@@ -27,6 +45,8 @@ export class HttpTransportBuilder {
     this._errorMappingOptions = errorMappingOptions;
     this._autoStart = autoStart;
     this._router = router;
+    this._serializers = serializers;
+    this._responseTransformer = responseTransformer;
   }
 
   public static create(): HttpTransportBuilder {
@@ -41,6 +61,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       this._router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -52,6 +74,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       this._router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -63,6 +87,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       this._router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -74,6 +100,8 @@ export class HttpTransportBuilder {
       errorMappingOptions,
       this._autoStart,
       this._router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -85,6 +113,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       autoStart,
       this._router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -96,6 +126,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -112,6 +144,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -128,6 +162,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -144,6 +180,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -162,6 +200,8 @@ export class HttpTransportBuilder {
       this._errorMappingOptions,
       this._autoStart,
       router,
+      this._serializers,
+      this._responseTransformer,
     );
   }
 
@@ -174,7 +214,64 @@ export class HttpTransportBuilder {
     return this.withBinding(planId, definitionsOrPlan);
   }
 
+  public withSerializer(
+    serializer: HttpSerializer,
+    options?: HttpSerializerOptions,
+  ): HttpTransportBuilder {
+    const nextSerializers = [...this._serializers, { serializer, options }];
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      this._router,
+      nextSerializers,
+      this._responseTransformer,
+    );
+  }
+
+  public withResponseTransformer(transformer: HttpResponseTransformer): HttpTransportBuilder {
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      this._router,
+      this._serializers,
+      transformer,
+    );
+  }
+
   public build(): HttpTransportManager {
+    let serializationEngine: HttpSerializationEngine | undefined;
+
+    if (this._serializers.length > 0 || this._responseTransformer) {
+      const registry = new HttpSerializerRegistry();
+
+      // Register user-provided serializers
+      for (const item of this._serializers) {
+        registry.register(item.serializer, item.options);
+      }
+
+      // Default JSON serializer fallback if no serializer for application/json was registered
+      const resolverTest = new HttpSerializerResolver(registry);
+      if (!resolverTest.resolve('application/json')) {
+        registry.register(new HttpJsonSerializer());
+      }
+
+      // Lock the registry during build
+      registry.lock();
+
+      const resolver = new HttpSerializerResolver(registry);
+      serializationEngine = new HttpSerializationEngine(
+        resolver,
+        undefined,
+        this._responseTransformer,
+      );
+    }
+
     return new HttpTransportManager({
       application: this._application,
       transportManager: this._transportManager,
@@ -182,6 +279,7 @@ export class HttpTransportBuilder {
       errorMappingOptions: this._errorMappingOptions,
       autoStart: this._autoStart,
       router: this._router,
+      serializationEngine,
     });
   }
 }

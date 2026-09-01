@@ -182,14 +182,14 @@ export class HttpTransportManager {
     return this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.getDiagnostics();
   }
 
-  public getSerializationDiagnostics(): HttpResponseDiagnosticsSnapshot {
-    return this._coordinator.serializationEngine.diagnostics.getSnapshot();
+  public getSerializationDiagnostics(): HttpResponseDiagnosticsSnapshot | undefined {
+    return this._coordinator.serializationEngine?.diagnostics.getSnapshot();
   }
 
   public resetDiagnostics(): void {
     this._diagnostics.reset();
     this._routingDiagnostics.reset();
-    this._coordinator.serializationEngine.diagnostics.reset();
+    this._coordinator.serializationEngine?.diagnostics.reset();
     this._routingCoordinator?.middlewarePipeline.resetDiagnostics();
     this._routingCoordinator?.controllerPipeline.coordinator.resetDiagnostics();
     this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.resetDiagnostics();

@@ -21,9 +21,6 @@ import { HttpRequestSnapshot } from '../request/HttpRequestSnapshot';
 import { HttpResponseFactory } from '../response/HttpResponseFactory';
 import { HttpResponseMapper } from '../response/HttpResponseMapper';
 import { HttpSerializationEngine } from '../response/HttpSerializationEngine';
-import { HttpSerializerRegistry } from '../response/HttpSerializerRegistry';
-import { HttpSerializerResolver } from '../response/HttpSerializerResolver';
-import { HttpJsonSerializer } from '../response/serializers/HttpJsonSerializer';
 import {
   HTTP_STATUS_CODES,
   HttpErrorMappingOptions,
@@ -36,7 +33,7 @@ export class HttpExecutionCoordinator {
   private readonly _transportManager: TransportManager;
   private readonly _defaultTimeoutMs: number;
   private readonly _errorMappingOptions: HttpErrorMappingOptions;
-  private readonly _serializationEngine: HttpSerializationEngine;
+  private readonly _serializationEngine?: HttpSerializationEngine | undefined;
 
   constructor(
     lifecycle: HttpLifecycleManager,
@@ -51,16 +48,10 @@ export class HttpExecutionCoordinator {
     this._transportManager = transportManager;
     this._defaultTimeoutMs = defaultTimeoutMs;
     this._errorMappingOptions = errorMappingOptions;
-    if (serializationEngine) {
-      this._serializationEngine = serializationEngine;
-    } else {
-      const reg = new HttpSerializerRegistry();
-      reg.register(new HttpJsonSerializer());
-      this._serializationEngine = new HttpSerializationEngine(new HttpSerializerResolver(reg));
-    }
+    this._serializationEngine = serializationEngine;
   }
 
-  public get serializationEngine(): HttpSerializationEngine {
+  public get serializationEngine(): HttpSerializationEngine | undefined {
     return this._serializationEngine;
   }
 

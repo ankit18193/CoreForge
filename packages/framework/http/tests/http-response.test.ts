@@ -1,4 +1,6 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { test } from 'node:test';
 
 import type { HttpResponse, HttpSerializer } from '@coreforge/contracts';
@@ -16,6 +18,7 @@ import {
   HttpResponseSnapshot,
   HttpResponseTransformationError,
   HttpResponseValidator,
+  HttpRouter,
   HttpSerializationCancellationError,
   HttpSerializationConfigurationError,
   HttpSerializationDiagnostics,
@@ -30,6 +33,7 @@ import {
   HttpSerializerRegistry,
   HttpSerializerResolver,
   HttpSerializerValidationError,
+  HttpTransportBuilder,
 } from '../src/index';
 
 test('CoreForge HTTP Response & Serialization Engine (@coreforge/http)', async (t) => {
@@ -874,6 +878,7 @@ test('CoreForge HTTP Response & Serialization Engine (@coreforge/http)', async (
       assert.strictEqual(response.body, '{"item":"Widget","input":{"id":123}}');
 
       // Diagnostics verification
+      assert.ok(coordinator.serializationEngine);
       const serDiag = coordinator.serializationEngine.diagnostics.getSnapshot();
       assert.strictEqual(serDiag.totalSerializations, 1);
       assert.strictEqual(serDiag.successfulSerializations, 1);
@@ -881,6 +886,274 @@ test('CoreForge HTTP Response & Serialization Engine (@coreforge/http)', async (
 
       await tm.stop();
       await app.stop();
+    },
+  );
+
+  // ─── 11. HttpTransportBuilder & Manager Diagnostics ─────────────────────────
+
+  await t.test(
+    '11a. HttpTransportBuilder & Manager: withSerializer, transformer, locking, and diagnostics',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('items.create', {
+        async execute(input: unknown) {
+          const body = (input as { body?: unknown })?.body ?? input;
+          return { id: 101, created: true, input: body };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.post('/items', 'items.create');
+
+      const customTransformer = new DefaultHttpResponseTransformer('custom-tf');
+
+      const builder = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withSerializer(new HttpJsonSerializer())
+        .withResponseTransformer(customTransformer);
+
+      const manager = builder.build();
+      await manager.start();
+
+      const res = await manager.handleRoutedRequest({
+        method: 'POST',
+        url: '/items',
+        path: '/items',
+        headers: { 'Content-Type': 'application/json' },
+        body: { name: 'Gadget' },
+      });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.headers['content-type'], 'application/json');
+      assert.strictEqual(res.body, '{"id":101,"created":true,"input":{"name":"Gadget"}}');
+
+      const diag = manager.getSerializationDiagnostics();
+      assert.ok(diag);
+      assert.strictEqual(diag.totalSerializations, 1);
+      assert.strictEqual(diag.successfulSerializations, 1);
+      assert.strictEqual(diag.failedSerializations, 0);
+
+      manager.resetDiagnostics();
+      const resetDiag = manager.getSerializationDiagnostics();
+      assert.ok(resetDiag);
+      assert.strictEqual(resetDiag.totalSerializations, 0);
+
+      await manager.stop();
+      await app.stop();
+    },
+  );
+
+  // ─── 12. Reverse Middleware Unwinding with Serialized Response ──────────────
+
+  await t.test(
+    '12. Middleware reverse unwinding inspects and enriches serialized response',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('echo', {
+        async execute(input: unknown) {
+          return { echo: input };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.get('/echo', 'echo');
+
+      // Middleware that inspects serialized body on the unwind return leg
+      router.use({
+        id: 'response-enricher',
+        name: 'ResponseEnricher',
+        async execute(_ctx, next) {
+          const res = (await next()) as HttpResponse;
+          // Verify on return leg that body is already a serialized JSON string
+          assert.strictEqual(typeof res.body, 'string');
+          assert.strictEqual(res.headers['content-type'], 'application/json');
+
+          return {
+            ...res,
+            headers: {
+              ...res.headers,
+              'x-middleware-unwound': 'true',
+            },
+          };
+        },
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withSerializer(new HttpJsonSerializer())
+        .build();
+
+      await manager.start();
+
+      const res = await manager.handleRoutedRequest({
+        method: 'GET',
+        url: '/echo',
+        path: '/echo',
+        headers: {},
+      });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.headers['x-middleware-unwound'], 'true');
+      assert.strictEqual(res.headers['content-type'], 'application/json');
+      assert.strictEqual(typeof res.body, 'string');
+
+      await manager.stop();
+      await app.stop();
+    },
+  );
+
+  // ─── 13. 1,000 Concurrent Responses High-Load Test ──────────────────────────
+
+  await t.test(
+    '13. High-Concurrency: 1,000 concurrent responses maintain strict isolation with zero cross-talk',
+    async () => {
+      const CONCURRENCY = 1000;
+      const app = ApplicationIntegrationBuilder.create().build();
+
+      app.applicationManager.register('compute', {
+        async execute(input: unknown) {
+          const body = (input as { body?: { n?: number } })?.body ?? (input as { n?: number });
+          const num = body?.n ?? 0;
+          if (num % 4 === 0) {
+            // Explicit 201 Created pattern
+            return {
+              status: 201,
+              result: num * 2,
+              token: 'secret-token',
+            };
+          }
+          if (num % 4 === 1) {
+            // Explicit 204 No Content pattern
+            return {
+              status: 204,
+            };
+          }
+          // Regular response with password to redact
+          return {
+            result: num * 2,
+            password: `pwd-${num}`,
+          };
+        },
+      });
+      await app.start();
+
+      const router = new HttpRouter();
+      router.post('/compute', 'compute');
+
+      const manager = HttpTransportBuilder.create()
+        .withApplication(app)
+        .withRouter(router)
+        .withSerializer(new HttpJsonSerializer())
+        .build();
+
+      await manager.start();
+
+      const tasks = Array.from({ length: CONCURRENCY }, async (_, idx) => {
+        const res = await manager.handleRoutedRequest(
+          {
+            method: 'POST',
+            url: '/compute',
+            path: '/compute',
+            headers: { 'Content-Type': 'application/json' },
+            body: { n: idx },
+          },
+          {
+            fieldsToRedact: ['password'],
+          },
+        );
+
+        if (idx % 4 === 0) {
+          assert.strictEqual(res.status, 201);
+          assert.strictEqual(
+            res.body,
+            JSON.stringify({ status: 201, result: idx * 2, token: 'secret-token' }),
+          );
+          assert.strictEqual(res.headers['content-type'], 'application/json');
+        } else if (idx % 4 === 1) {
+          assert.strictEqual(res.status, 204);
+          assert.strictEqual(res.body, undefined);
+          assert.strictEqual(res.headers['content-type'], undefined);
+        } else {
+          assert.strictEqual(res.status, 200);
+          assert.strictEqual(res.body, JSON.stringify({ result: idx * 2, password: '[REDACTED]' }));
+          assert.strictEqual(res.headers['content-type'], 'application/json');
+        }
+      });
+
+      await Promise.all(tasks);
+
+      const diag = manager.getSerializationDiagnostics();
+      assert.ok(diag);
+      // 250 requests were 204 No Content which skipped the serializer engine
+      assert.strictEqual(diag.totalSerializations, 750);
+      assert.strictEqual(diag.successfulSerializations, 750);
+      assert.strictEqual(diag.failedSerializations, 0);
+
+      await manager.stop();
+      await app.stop();
+    },
+  );
+
+  // ─── 14. Diagnostics Security ───────────────────────────────────────────────
+
+  await t.test(
+    '14. Diagnostics Security: metrics snapshot contains purely numbers with zero payload retention',
+    () => {
+      const diag = new HttpSerializationDiagnostics();
+      diag.recordSerializationStarted();
+      diag.recordSerializationSuccess(12.5);
+      diag.recordSerializationFailure(50, true, true);
+      diag.recordTransformationFailure();
+      diag.recordResolutionFailure();
+
+      const snap = diag.getSnapshot();
+      for (const [key, val] of Object.entries(snap)) {
+        assert.strictEqual(
+          typeof val,
+          'number',
+          `Diagnostics field '${key}' must be a pure numerical counter/duration`,
+        );
+      }
+
+      const snapStr = JSON.stringify(snap);
+      assert.ok(!snapStr.includes('password'));
+      assert.ok(!snapStr.includes('token'));
+      assert.ok(!snapStr.includes('body'));
+    },
+  );
+
+  // ─── 15. Architectural Boundary Verification ────────────────────────────────
+
+  await t.test(
+    '15. Critical Architectural Boundary: @coreforge/http has zero dependency on higher layers',
+    () => {
+      const packageJsonPath = path.resolve(__dirname, '../../package.json');
+      const content = fs.readFileSync(packageJsonPath, 'utf8');
+      const pkg = JSON.parse(content);
+
+      const allDeps = {
+        ...(pkg.dependencies || {}),
+        ...(pkg.devDependencies || {}),
+        ...(pkg.peerDependencies || {}),
+      };
+
+      // Forbidden higher layers
+      const forbidden = [
+        '@coreforge/runtime',
+        '@coreforge/runtime-orchestrator',
+        '@coreforge/runtime-initializer',
+      ];
+      for (const f of forbidden) {
+        assert.strictEqual(
+          f in allDeps,
+          false,
+          `Architectural boundary violated: @coreforge/http must not depend on ${f}`,
+        );
+      }
     },
   );
 });

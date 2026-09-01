@@ -73,7 +73,8 @@ export class HttpResponseFactory {
     cookies?: Record<string, string>,
     metadata?: Record<string, unknown>,
   ): HttpResponse<TBody> {
-    const finalStatus = status ?? HTTP_STATUS_CODES.OK;
+    const finalStatus =
+      status ?? (body === undefined ? HTTP_STATUS_CODES.NO_CONTENT : HTTP_STATUS_CODES.OK);
     // 204 No Content enforcement
     const is204 = finalStatus === HTTP_STATUS_CODES.NO_CONTENT;
     const effectiveBody = is204 ? undefined : body;
