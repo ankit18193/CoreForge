@@ -5,6 +5,7 @@ import type { HttpResponse, HttpSerializer } from '@coreforge/contracts';
 
 import {
   HttpError,
+  HttpJsonSerializer,
   HttpResponseSnapshot,
   HttpResponseTransformationError,
   HttpResponseValidator,
@@ -16,6 +17,8 @@ import {
   HttpSerializerDuplicateError,
   HttpSerializerNotFoundError,
   HttpSerializerRegistrationError,
+  HttpSerializerRegistry,
+  HttpSerializerResolver,
   HttpSerializerValidationError,
 } from '../src/index';
 
@@ -283,4 +286,162 @@ test('CoreForge HTTP Response & Serialization Engine (@coreforge/http)', async (
       assert.strictEqual(ctx.status, 200);
     },
   );
+
+  // ─── 4. HttpSerializerRegistry ──────────────────────────────────────────────
+
+  await t.test(
+    '4a. HttpSerializerRegistry: registers, retrieves, lists, and unregisters serializers',
+    () => {
+      const registry = new HttpSerializerRegistry();
+      assert.strictEqual(registry.size, 0);
+      assert.strictEqual(registry.locked, false);
+
+      const jsonSerializer = new HttpJsonSerializer();
+      registry.register(jsonSerializer);
+
+      assert.strictEqual(registry.size, 1);
+      assert.strictEqual(registry.has('json'), true);
+      assert.strictEqual(registry.get('json'), jsonSerializer);
+      assert.strictEqual(registry.list().length, 1);
+
+      // Duplicate registration throws
+      assert.throws(() => registry.register(jsonSerializer), HttpSerializerDuplicateError);
+
+      // Unregister
+      const removed = registry.unregister('json');
+      assert.strictEqual(removed, true);
+      assert.strictEqual(registry.size, 0);
+      assert.strictEqual(registry.has('json'), false);
+      assert.strictEqual(registry.unregister('json'), false);
+    },
+  );
+
+  await t.test(
+    '4b. HttpSerializerRegistry: locking prevents registration, unregistration, and clear',
+    () => {
+      const registry = new HttpSerializerRegistry();
+      const jsonSerializer = new HttpJsonSerializer();
+      registry.register(jsonSerializer);
+
+      registry.lock();
+      assert.strictEqual(registry.locked, true);
+
+      // Further registration throws
+      assert.throws(
+        () => registry.register(new HttpJsonSerializer({ id: 'json-2' })),
+        HttpSerializationConfigurationError,
+      );
+
+      // Unregister throws
+      assert.throws(() => registry.unregister('json'), HttpSerializationConfigurationError);
+
+      // Clear throws
+      assert.throws(() => registry.clear(), HttpSerializationConfigurationError);
+    },
+  );
+
+  // ─── 5. HttpJsonSerializer ──────────────────────────────────────────────────
+
+  await t.test(
+    '5. HttpJsonSerializer: serializes primitives, objects, arrays, and null correctly',
+    () => {
+      const serializer = new HttpJsonSerializer();
+      assert.strictEqual(serializer.id, 'json');
+      assert.deepStrictEqual(serializer.mediaTypes, ['application/json']);
+
+      assert.strictEqual(serializer.serialize({ a: 1, b: 'two' }), '{"a":1,"b":"two"}');
+      assert.strictEqual(serializer.serialize([1, 2, 3]), '[1,2,3]');
+      assert.strictEqual(serializer.serialize('hello'), '"hello"');
+      assert.strictEqual(serializer.serialize(42), '42');
+      assert.strictEqual(serializer.serialize(true), 'true');
+      assert.strictEqual(serializer.serialize(null), 'null');
+      assert.strictEqual(serializer.serialize(undefined), undefined);
+
+      // Circular object serialization throws HttpSerializationExecutionError
+      const circular: Record<string, unknown> = {};
+      circular['self'] = circular;
+      assert.throws(() => serializer.serialize(circular), HttpSerializationExecutionError);
+    },
+  );
+
+  // ─── 6. HttpSerializerResolver ──────────────────────────────────────────────
+
+  await t.test('6a. HttpSerializerResolver: resolves by explicit serializer ID', () => {
+    const registry = new HttpSerializerRegistry();
+    const jsonSerializer = new HttpJsonSerializer({ id: 'json-custom' });
+    registry.register(jsonSerializer);
+
+    const resolver = new HttpSerializerResolver(registry);
+    const resolved = resolver.resolve('json-custom');
+    assert.strictEqual(resolved, jsonSerializer);
+  });
+
+  await t.test(
+    '6b. HttpSerializerResolver: resolves by media type with priority and sequence ordering',
+    () => {
+      const registry = new HttpSerializerRegistry();
+
+      const lowPriorityJson = new HttpJsonSerializer({ id: 'json-low', priority: 10 });
+      const highPriorityJson = new HttpJsonSerializer({ id: 'json-high', priority: 100 });
+      const textSerializer: HttpSerializer = {
+        id: 'text',
+        name: 'TextSerializer',
+        priority: 50,
+        mediaTypes: ['text/plain'],
+        serialize: (val) => String(val),
+      };
+
+      // Register low first, then high
+      registry.register(lowPriorityJson);
+      registry.register(highPriorityJson);
+      registry.register(textSerializer);
+
+      const resolver = new HttpSerializerResolver(registry);
+
+      // Media type match: resolves highPriorityJson due to priority 100 > 10
+      const matchedJson = resolver.resolve('application/json');
+      assert.strictEqual(matchedJson?.id, 'json-high');
+
+      // Media type with charset parameter match
+      const matchedWithCharset = resolver.resolve('application/json; charset=utf-8');
+      assert.strictEqual(matchedWithCharset?.id, 'json-high');
+
+      // Text match
+      const matchedText = resolver.resolve('text/plain');
+      assert.strictEqual(matchedText?.id, 'text');
+
+      // Default fallback resolves highest priority overall (json-high: 100)
+      const defaultResolved = resolver.resolve();
+      assert.strictEqual(defaultResolved?.id, 'json-high');
+    },
+  );
+
+  await t.test('6c. HttpSerializerResolver: sequence ASC deterministic tie-breaker', () => {
+    const registry = new HttpSerializerRegistry();
+
+    const firstEqual = new HttpJsonSerializer({ id: 'first', priority: 50 });
+    const secondEqual = new HttpJsonSerializer({ id: 'second', priority: 50 });
+
+    registry.register(firstEqual);
+    registry.register(secondEqual);
+
+    const resolver = new HttpSerializerResolver(registry);
+    const resolved = resolver.resolve('application/json');
+    assert.strictEqual(
+      resolved?.id,
+      'first',
+      'Must resolve first registered serializer on priority tie',
+    );
+  });
+
+  await t.test('6d. HttpSerializerResolver: throwOnNotFound option throws when no match', () => {
+    const registry = new HttpSerializerRegistry();
+    const resolver = new HttpSerializerResolver(registry);
+
+    assert.strictEqual(resolver.resolve('application/xml'), undefined);
+    assert.throws(
+      () => resolver.resolve('application/xml', { throwOnNotFound: true }),
+      HttpSerializerNotFoundError,
+    );
+  });
 });

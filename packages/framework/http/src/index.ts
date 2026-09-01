@@ -102,3 +102,6 @@ export * from './types/httpResponseTypes';
 export * from './errors/HttpSerializationErrors';
 export * from './response/HttpResponseValidator';
 export * from './response/HttpResponseSnapshot';
+export * from './response/HttpSerializerRegistry';
+export * from './response/HttpSerializerResolver';
+export * from './response/serializers/HttpJsonSerializer';
