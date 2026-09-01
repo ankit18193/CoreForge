@@ -2520,3 +2520,66 @@ export interface HttpBindingDiagnosticsSnapshot {
   readonly averageDurationMs: number;
   readonly slowestDurationMs: number;
 }
+
+// ============================================================================
+// Phase 8.7: HTTP Response & Serialization Engine Contracts
+// ============================================================================
+
+export type HttpCircularReferencePolicy = 'ERROR' | 'SANITIZE';
+
+export interface HttpSerializationContext {
+  readonly mediaType: string;
+  readonly charset?: string | undefined;
+  readonly operation?: string | undefined;
+  readonly status?: number | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpSerializer<TInput = unknown, TOutput = unknown> {
+  readonly id: string;
+  readonly name: string;
+  readonly priority?: number | undefined;
+  readonly mediaTypes: readonly string[];
+  serialize(value: TInput, context: HttpSerializationContext): TOutput | Promise<TOutput>;
+}
+
+export interface HttpSerializerOptions {
+  readonly id?: string | undefined;
+  readonly name?: string | undefined;
+  readonly priority?: number | undefined;
+  readonly mediaTypes?: readonly string[] | undefined;
+  readonly enabled?: boolean | undefined;
+}
+
+export interface HttpSerializationResult<T = unknown> {
+  readonly success: boolean;
+  readonly value?: T | undefined;
+  readonly serializerId?: string | undefined;
+  readonly mediaType?: string | undefined;
+  readonly durationMs: number;
+  readonly error?: unknown | undefined;
+}
+
+export interface HttpResponseTransformationOptions {
+  readonly fieldsToRedact?: readonly string[] | undefined;
+  readonly circularPolicy?: HttpCircularReferencePolicy | undefined;
+  readonly extraMetadata?: Readonly<Record<string, unknown>> | undefined;
+}
+
+export interface HttpResponseTransformer<TInput = unknown, TOutput = unknown> {
+  readonly id: string;
+  transform(value: TInput, options?: HttpResponseTransformationOptions): TOutput | Promise<TOutput>;
+}
+
+export interface HttpResponseDiagnosticsSnapshot {
+  readonly totalSerializations: number;
+  readonly successfulSerializations: number;
+  readonly failedSerializations: number;
+  readonly cancelledSerializations: number;
+  readonly timeoutSerializations: number;
+  readonly activeSerializations: number;
+  readonly transformationFailures: number;
+  readonly serializerResolutionFailures: number;
+  readonly averageDurationMs: number;
+  readonly slowestDurationMs: number;
+}

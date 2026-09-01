@@ -96,3 +96,9 @@ export * from './internal/HttpBindingProfiler';
 export * from './diagnostics/HttpBindingDiagnostics';
 export * from './binding/HttpBindingExecutor';
 export * from './binding/HttpBindingCoordinator';
+
+// Response & Serialization Engine (Phase 8.7)
+export * from './types/httpResponseTypes';
+export * from './errors/HttpSerializationErrors';
+export * from './response/HttpResponseValidator';
+export * from './response/HttpResponseSnapshot';
