@@ -105,3 +105,7 @@ export * from './response/HttpResponseSnapshot';
 export * from './response/HttpSerializerRegistry';
 export * from './response/HttpSerializerResolver';
 export * from './response/serializers/HttpJsonSerializer';
+export * from './response/HttpResponseTransformer';
+export * from './internal/HttpSerializationProfiler';
+export * from './diagnostics/HttpSerializationDiagnostics';
+export * from './response/HttpSerializationEngine';

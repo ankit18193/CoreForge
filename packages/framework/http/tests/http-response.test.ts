@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import type { HttpResponse, HttpSerializer } from '@coreforge/contracts';
 
 import {
+  DefaultHttpResponseTransformer,
   HttpError,
   HttpJsonSerializer,
   HttpResponseSnapshot,
@@ -11,8 +12,11 @@ import {
   HttpResponseValidator,
   HttpSerializationCancellationError,
   HttpSerializationConfigurationError,
+  HttpSerializationDiagnostics,
+  HttpSerializationEngine,
   HttpSerializationError,
   HttpSerializationExecutionError,
+  HttpSerializationProfiler,
   HttpSerializationTimeoutError,
   HttpSerializerDuplicateError,
   HttpSerializerNotFoundError,
@@ -444,4 +448,235 @@ test('CoreForge HTTP Response & Serialization Engine (@coreforge/http)', async (
       HttpSerializerNotFoundError,
     );
   });
+
+  // ─── 7. DefaultHttpResponseTransformer ──────────────────────────────────────
+
+  await t.test(
+    '7a. DefaultHttpResponseTransformer: leaves data unchanged when no redaction configured',
+    () => {
+      const transformer = new DefaultHttpResponseTransformer();
+      const input = { id: 101, username: 'ankit', email: 'ankit@example.com' };
+      const transformed = transformer.transform(input) as Record<string, unknown>;
+
+      assert.deepStrictEqual(transformed, input);
+      assert.notStrictEqual(transformed, input, 'Transformer must return a fresh copy');
+    },
+  );
+
+  await t.test(
+    '7b. DefaultHttpResponseTransformer: explicit field redaction masks configured keys',
+    () => {
+      const transformer = new DefaultHttpResponseTransformer();
+      const input = {
+        id: 101,
+        username: 'ankit',
+        password: 'superSecretPassword!',
+        nested: {
+          token: 'jwt.token.here',
+          publicNote: 'hello',
+          deep: [{ secretKey: 'topsecret' }],
+        },
+      };
+
+      const transformed = transformer.transform(input, {
+        fieldsToRedact: ['password', 'token', 'secretKey'],
+      }) as {
+        id: number;
+        username: string;
+        password: string;
+        nested: {
+          token: string;
+          publicNote: string;
+          deep: { secretKey: string }[];
+        };
+      };
+
+      // Original input must NOT be mutated
+      assert.strictEqual(input.password, 'superSecretPassword!');
+      assert.strictEqual(input.nested.token, 'jwt.token.here');
+
+      // Transformed copy has redacted fields
+      assert.strictEqual(transformed.id, 101);
+      assert.strictEqual(transformed.username, 'ankit');
+      assert.strictEqual(transformed.password, '[REDACTED]');
+      assert.strictEqual(transformed.nested.token, '[REDACTED]');
+      assert.strictEqual(transformed.nested.publicNote, 'hello');
+      assert.strictEqual(transformed.nested.deep[0].secretKey, '[REDACTED]');
+    },
+  );
+
+  // ─── 8. HttpSerializationProfiler & HttpSerializationDiagnostics ────────────
+
+  await t.test(
+    '8a. HttpSerializationProfiler: measures elapsed execution time in milliseconds',
+    async () => {
+      const profiler = new HttpSerializationProfiler().start();
+      await new Promise((r) => setTimeout(r, 10));
+      const elapsed = profiler.stop();
+      assert.ok(elapsed >= 8, `Elapsed ms should be at least ~8ms, got ${elapsed}`);
+    },
+  );
+
+  await t.test(
+    '8b. HttpSerializationDiagnostics: records metrics accurately with pure numerical snapshot',
+    () => {
+      const diag = new HttpSerializationDiagnostics();
+      diag.recordSerializationStarted();
+      diag.recordSerializationSuccess(15);
+      diag.recordSerializationStarted();
+      diag.recordSerializationFailure(25, true, false);
+      diag.recordTransformationFailure();
+      diag.recordResolutionFailure();
+
+      const snap = diag.getSnapshot();
+      assert.strictEqual(snap.totalSerializations, 2);
+      assert.strictEqual(snap.successfulSerializations, 1);
+      assert.strictEqual(snap.failedSerializations, 1);
+      assert.strictEqual(snap.cancelledSerializations, 1);
+      assert.strictEqual(snap.timeoutSerializations, 0);
+      assert.strictEqual(snap.activeSerializations, 0);
+      assert.strictEqual(snap.transformationFailures, 1);
+      assert.strictEqual(snap.serializerResolutionFailures, 1);
+      assert.strictEqual(snap.slowestDurationMs, 25);
+      assert.strictEqual(snap.averageDurationMs, 20);
+
+      // Verify snapshot contains only numbers
+      for (const [key, val] of Object.entries(snap)) {
+        assert.strictEqual(typeof val, 'number', `Metric '${key}' must be a number`);
+      }
+
+      diag.reset();
+      const resetSnap = diag.getSnapshot();
+      assert.strictEqual(resetSnap.totalSerializations, 0);
+      assert.strictEqual(resetSnap.successfulSerializations, 0);
+    },
+  );
+
+  // ─── 9. HttpSerializationEngine ─────────────────────────────────────────────
+
+  await t.test(
+    '9a. HttpSerializationEngine: serializes object using default JSON serializer',
+    async () => {
+      const registry = new HttpSerializerRegistry();
+      registry.register(new HttpJsonSerializer());
+      const resolver = new HttpSerializerResolver(registry);
+      const engine = new HttpSerializationEngine(resolver);
+
+      const result = await engine.serialize({ message: 'CoreForge', code: 200 });
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.serializerId, 'json');
+      assert.strictEqual(result.mediaType, 'application/json');
+      assert.strictEqual(result.value, '{"message":"CoreForge","code":200}');
+      assert.ok(result.durationMs >= 0);
+    },
+  );
+
+  await t.test(
+    '9b. HttpSerializationEngine: 204 No Content skips serialization completely',
+    async () => {
+      const registry = new HttpSerializerRegistry();
+      registry.register(new HttpJsonSerializer());
+      const resolver = new HttpSerializerResolver(registry);
+      const engine = new HttpSerializationEngine(resolver);
+
+      // Even if a payload is passed, status: 204 must enforce undefined value and skip serializer
+      const result = await engine.serialize({ shouldBeIgnored: true }, { status: 204 });
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.value, undefined);
+    },
+  );
+
+  await t.test(
+    '9c. HttpSerializationEngine: undefined value returns undefined value without error',
+    async () => {
+      const registry = new HttpSerializerRegistry();
+      registry.register(new HttpJsonSerializer());
+      const resolver = new HttpSerializerResolver(registry);
+      const engine = new HttpSerializationEngine(resolver);
+
+      const result = await engine.serialize(undefined);
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.value, undefined);
+    },
+  );
+
+  await t.test('9d. HttpSerializationEngine: handles serializer timeout cleanly', async () => {
+    const registry = new HttpSerializerRegistry();
+    const slowSerializer: HttpSerializer = {
+      id: 'slow',
+      name: 'SlowSerializer',
+      mediaTypes: ['application/slow'],
+      async serialize() {
+        await new Promise((r) => setTimeout(r, 100));
+        return 'slow';
+      },
+    };
+    registry.register(slowSerializer);
+    const resolver = new HttpSerializerResolver(registry);
+    const engine = new HttpSerializationEngine(resolver);
+
+    // 20ms timeout on a 100ms serializer
+    const result = await engine.serialize(
+      { data: 1 },
+      {
+        serializerId: 'slow',
+        timeoutMs: 20,
+      },
+    );
+
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error instanceof HttpSerializationTimeoutError);
+    assert.strictEqual((result.error as HttpSerializationTimeoutError).timeoutMs, 20);
+    assert.strictEqual(engine.diagnostics.getSnapshot().timeoutSerializations, 1);
+  });
+
+  await t.test('9e. HttpSerializationEngine: handles AbortSignal cancellation', async () => {
+    const registry = new HttpSerializerRegistry();
+    const slowSerializer: HttpSerializer = {
+      id: 'slow',
+      name: 'SlowSerializer',
+      mediaTypes: ['application/slow'],
+      async serialize() {
+        await new Promise((r) => setTimeout(r, 100));
+        return 'slow';
+      },
+    };
+    registry.register(slowSerializer);
+    const resolver = new HttpSerializerResolver(registry);
+    const engine = new HttpSerializationEngine(resolver);
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 10);
+
+    const result = await engine.serialize(
+      { data: 1 },
+      {
+        serializerId: 'slow',
+        signal: controller.signal,
+      },
+    );
+
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error instanceof HttpSerializationCancellationError);
+    assert.strictEqual(engine.diagnostics.getSnapshot().cancelledSerializations, 1);
+  });
+
+  await t.test(
+    '9f. HttpSerializationEngine: missing serializer returns error result or throws',
+    async () => {
+      const registry = new HttpSerializerRegistry();
+      const resolver = new HttpSerializerResolver(registry);
+      const engine = new HttpSerializationEngine(resolver);
+
+      const result = await engine.serialize({ data: 1 }, { mediaType: 'application/protobuf' });
+      assert.strictEqual(result.success, false);
+      assert.ok(result.error instanceof HttpSerializerNotFoundError);
+
+      await assert.rejects(
+        () =>
+          engine.serialize({ data: 1 }, { mediaType: 'application/protobuf', throwOnError: true }),
+        HttpSerializerNotFoundError,
+      );
+    },
+  );
 });
