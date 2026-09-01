@@ -2616,7 +2616,8 @@ export interface HttpErrorMapperRegistrationOptions {
   readonly name?: string | undefined;
   readonly priority?: number | undefined;
   readonly code?: string | undefined;
-  readonly errorType?: (new (...args: unknown[]) => Error) | undefined;
+  readonly errorType?:
+    (new (...args: never[]) => Error) | (abstract new (...args: never[]) => Error) | undefined;
   readonly predicate?: ((error: unknown) => boolean) | undefined;
 }
 

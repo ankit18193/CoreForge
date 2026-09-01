@@ -115,3 +115,5 @@ export * from './types/httpErrorTypes';
 export * from './errors/HttpErrorMappingErrors';
 export * from './response/error/HttpErrorMappingValidator';
 export * from './response/error/HttpPublicErrorSnapshot';
+export * from './response/error/HttpErrorMapperRegistry';
+export * from './response/error/HttpErrorMapperResolver';

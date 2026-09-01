@@ -17,7 +17,8 @@ export type {
   HttpErrorMappingResult,
 };
 
-export type HttpErrorConstructor = new (...args: unknown[]) => Error;
+export type HttpErrorConstructor =
+  (new (...args: never[]) => Error) | (abstract new (...args: never[]) => Error);
 
 export type HttpErrorPredicate = (error: unknown) => boolean;
 
