@@ -117,3 +117,7 @@ export * from './response/error/HttpErrorMappingValidator';
 export * from './response/error/HttpPublicErrorSnapshot';
 export * from './response/error/HttpErrorMapperRegistry';
 export * from './response/error/HttpErrorMapperResolver';
+export * from './response/error/HttpErrorSanitizer';
+export * from './diagnostics/HttpErrorMappingDiagnostics';
+export * from './response/error/DefaultHttpErrorMapper';
+export * from './response/error/HttpErrorMappingEngine';

@@ -5,6 +5,7 @@ import type { HttpErrorMapper, HttpErrorMappingResult } from '@coreforge/contrac
 
 import {
   CoreForgeError,
+  DefaultHttpErrorMapper,
   HttpError,
   HttpErrorMapperDuplicateError,
   HttpErrorMapperNotFoundError,
@@ -12,10 +13,13 @@ import {
   HttpErrorMapperRegistry,
   HttpErrorMapperResolver,
   HttpErrorMappingConfigurationError,
+  HttpErrorMappingDiagnostics,
+  HttpErrorMappingEngine,
   HttpErrorMappingError,
   HttpErrorMappingExecutionError,
   HttpErrorMappingValidationError,
   HttpErrorMappingValidator,
+  HttpErrorSanitizer,
   HttpPublicErrorSnapshot,
   TransportError,
 } from '../src/index';
@@ -392,4 +396,241 @@ test('CoreForge HTTP Error Mapping Engine (@coreforge/http)', async (t) => {
       HttpErrorMapperNotFoundError,
     );
   });
+
+  // ─── 6. HttpErrorSanitizer ──────────────────────────────────────────────────
+
+  await t.test(
+    '6a. HttpErrorSanitizer: redacts credentials, secrets, tokens, connection strings, and paths',
+    () => {
+      const raw =
+        'Failed with bearer secret-token-123 and password=SuperSecret! and token=jwt.payload.sig and apikey=key-999';
+      const sanitized = HttpErrorSanitizer.sanitizeString(raw);
+
+      assert.ok(!sanitized.includes('secret-token-123'));
+      assert.ok(!sanitized.includes('SuperSecret!'));
+      assert.ok(!sanitized.includes('jwt.payload.sig'));
+      assert.ok(!sanitized.includes('key-999'));
+      assert.ok(sanitized.includes('[REDACTED]'));
+
+      // Connection strings
+      const connStr =
+        'Error: could not connect to mongodb://admin:secret123@mongo.internal:27017/coreforge_db?ssl=true';
+      const sanitizedConn = HttpErrorSanitizer.sanitizeString(connStr);
+      assert.ok(!sanitizedConn.includes('admin:secret123'));
+      assert.ok(!sanitizedConn.includes('mongo.internal'));
+      assert.ok(sanitizedConn.includes('mongodb://[REDACTED]'));
+
+      const pgStr = 'Postgres error postgres://postgres:password456@pg.prod:5432/main';
+      const sanitizedPg = HttpErrorSanitizer.sanitizeString(pgStr);
+      assert.ok(!sanitizedPg.includes('password456'));
+      assert.ok(sanitizedPg.includes('postgres://[REDACTED]'));
+
+      // File paths
+      const pathStr =
+        'Exception in /home/deploy/app/server.ts at C:\\Users\\Admin\\project\\index.ts';
+      const sanitizedPath = HttpErrorSanitizer.sanitizeString(pathStr);
+      assert.ok(!sanitizedPath.includes('/home/deploy/app'));
+      assert.ok(!sanitizedPath.includes('C:\\Users\\Admin'));
+      assert.ok(sanitizedPath.includes('[PATH_REDACTED]'));
+
+      // Object details redaction
+      const sensitiveDetails = {
+        user: 'alice',
+        password: 'mypassword',
+        token: 'jwt.tok',
+        headers: { authorization: 'Bearer topsecret', 'content-type': 'application/json' },
+        customSecret: 'hidden',
+      };
+      const sanitizedDetails = HttpErrorSanitizer.sanitizeDetails(sensitiveDetails, [
+        'customSecret',
+      ]) as Record<string, unknown>;
+
+      assert.strictEqual(sanitizedDetails['user'], 'alice');
+      assert.strictEqual(sanitizedDetails['password'], '[REDACTED]');
+      assert.strictEqual(sanitizedDetails['token'], '[REDACTED]');
+      assert.strictEqual(
+        (sanitizedDetails['headers'] as Record<string, unknown>)['authorization'],
+        '[REDACTED]',
+      );
+      assert.strictEqual(
+        (sanitizedDetails['headers'] as Record<string, unknown>)['content-type'],
+        'application/json',
+      );
+      assert.strictEqual(sanitizedDetails['customSecret'], '[REDACTED]');
+    },
+  );
+
+  // ─── 7. DefaultHttpErrorMapper ──────────────────────────────────────────────
+
+  await t.test('7a. DefaultHttpErrorMapper: standard CoreForge error status mappings', () => {
+    const mapper = new DefaultHttpErrorMapper();
+    const ctx = HttpPublicErrorSnapshot.createContext();
+
+    // 400 Validation
+    const valRes = mapper.map(new CoreForgeError('Invalid', 'VALIDATION_FAILED'), ctx);
+    assert.strictEqual(valRes.status, 400);
+    assert.strictEqual(valRes.publicError.code, 'VALIDATION_FAILED');
+
+    // 401 Authentication
+    const authRes = mapper.map(
+      new CoreForgeError('Unauthenticated', 'AUTHENTICATION_REQUIRED'),
+      ctx,
+    );
+    assert.strictEqual(authRes.status, 401);
+
+    // 403 Forbidden
+    const forbRes = mapper.map(new CoreForgeError('Forbidden', 'FORBIDDEN_RESOURCE'), ctx);
+    assert.strictEqual(forbRes.status, 403);
+
+    // 404 Not Found
+    const nfRes = mapper.map(new CoreForgeError('Not found', 'RESOURCE_NOT_FOUND'), ctx);
+    assert.strictEqual(nfRes.status, 404);
+
+    // 405 Method Not Allowed
+    const mnaRes = mapper.map(new CoreForgeError('Method not allowed', 'METHOD_NOT_ALLOWED'), ctx);
+    assert.strictEqual(mnaRes.status, 405);
+
+    // 409 Conflict
+    const confRes = mapper.map(new CoreForgeError('Conflict', 'RESOURCE_CONFLICT'), ctx);
+    assert.strictEqual(confRes.status, 409);
+
+    // 429 Rate Limit
+    const rlRes = mapper.map(new CoreForgeError('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED'), ctx);
+    assert.strictEqual(rlRes.status, 429);
+
+    // 504 Timeout
+    const toRes = mapper.map(new CoreForgeError('Timed out', 'GATEWAY_TIMEOUT'), ctx);
+    assert.strictEqual(toRes.status, 504);
+
+    // 499 Cancellation
+    const cancelRes = mapper.map(new CoreForgeError('Cancelled', 'OPERATION_CANCELLED'), ctx);
+    assert.strictEqual(cancelRes.status, 499);
+
+    // 503 State
+    const stateRes = mapper.map(new CoreForgeError('Unavailable', 'SERVICE_STATE_STOPPED'), ctx);
+    assert.strictEqual(stateRes.status, 503);
+  });
+
+  await t.test(
+    '7b. DefaultHttpErrorMapper: unknown error completely sanitizes stack, internal message and database URLs',
+    () => {
+      const mapper = new DefaultHttpErrorMapper();
+      const ctx = HttpPublicErrorSnapshot.createContext();
+
+      const rawError = new Error(
+        'Mongo connection failed at mongodb://admin:pass123@mongo.prod:27017/secret_db',
+      );
+      rawError.stack =
+        'Error: Mongo connection failed\n    at Object.<anonymous> (/home/deploy/app/db.ts:42:15)';
+
+      const res = mapper.map(rawError, ctx);
+      assert.strictEqual(res.status, 500);
+      assert.strictEqual(res.publicError.code, 'INTERNAL_ERROR');
+      assert.strictEqual(res.publicError.message, 'An internal server error occurred.');
+      assert.strictEqual(res.publicError.details, undefined);
+
+      // Verify none of the internal details leaked
+      const serialized = JSON.stringify(res);
+      assert.ok(!serialized.includes('pass123'));
+      assert.ok(!serialized.includes('mongo.prod'));
+      assert.ok(!serialized.includes('secret_db'));
+      assert.ok(!serialized.includes('/home/deploy/app'));
+      assert.ok(!serialized.includes('db.ts'));
+    },
+  );
+
+  // ─── 8. HttpErrorMappingEngine ──────────────────────────────────────────────
+
+  await t.test(
+    '8a. HttpErrorMappingEngine: executes mapping, tracks diagnostics, and provides safe fallback',
+    async () => {
+      const engine = new HttpErrorMappingEngine();
+
+      // Custom mapper
+      const customMapper: HttpErrorMapper = {
+        id: 'payment-error-mapper',
+        map: () => ({
+          status: 402,
+          publicError: { code: 'PAYMENT_REQUIRED', message: 'Insufficient funds' },
+        }),
+      };
+      engine.registerMapper(customMapper, { code: 'INSUFFICIENT_FUNDS' });
+
+      // Map registered error
+      const res1 = await engine.mapError({
+        code: 'INSUFFICIENT_FUNDS',
+        message: 'Not enough money',
+      });
+      assert.strictEqual(res1.status, 402);
+      assert.strictEqual(res1.publicError.code, 'PAYMENT_REQUIRED');
+
+      // Map unmapped error -> triggers fallback
+      const res2 = await engine.mapError(new Error('Unknown internal failure'));
+      assert.strictEqual(res2.status, 500);
+      assert.strictEqual(res2.publicError.code, 'INTERNAL_ERROR');
+
+      // Verify diagnostics
+      const snap = engine.diagnostics.getSnapshot();
+      assert.strictEqual(snap.totalErrorsMapped, 2);
+      assert.strictEqual(snap.successfulMappings, 1);
+      assert.strictEqual(snap.fallbackMappings, 1);
+      assert.strictEqual(snap.statusDistribution[402], 1);
+      assert.strictEqual(snap.statusDistribution[500], 1);
+      assert.strictEqual(typeof snap.averageDurationMs, 'number');
+    },
+  );
+
+  await t.test(
+    '8b. HttpErrorMappingEngine: throwing mapper safely falls back to 500 without crashing',
+    async () => {
+      const engine = new HttpErrorMappingEngine();
+
+      const buggyMapper: HttpErrorMapper = {
+        id: 'buggy-mapper',
+        map: () => {
+          throw new Error('Mapper exploded unexpectedly!');
+        },
+      };
+      engine.registerMapper(buggyMapper, { code: 'TRIGGER_BUGGY' });
+
+      const res = await engine.mapError({ code: 'TRIGGER_BUGGY' });
+      assert.strictEqual(res.status, 500);
+      assert.strictEqual(res.publicError.code, 'INTERNAL_ERROR');
+      assert.strictEqual(res.publicError.message, 'An internal server error occurred.');
+
+      const snap = engine.diagnostics.getSnapshot();
+      assert.strictEqual(snap.mappingFailures, 1);
+    },
+  );
+
+  await t.test(
+    '8c. HttpErrorMappingDiagnostics: tracks pure numerical metrics and reset works',
+    () => {
+      const diag = new HttpErrorMappingDiagnostics();
+      diag.recordSuccess(200, 5);
+      diag.recordFallback(500, 10);
+      diag.recordFailure(15);
+      diag.recordResolutionFailure();
+
+      const snapshot = diag.getSnapshot();
+      assert.strictEqual(snapshot.totalErrorsMapped, 3);
+      assert.strictEqual(snapshot.successfulMappings, 1);
+      assert.strictEqual(snapshot.fallbackMappings, 1);
+      assert.strictEqual(snapshot.mappingFailures, 1);
+      assert.strictEqual(snapshot.resolutionFailures, 1);
+      assert.strictEqual(snapshot.statusDistribution[200], 1);
+      assert.strictEqual(snapshot.statusDistribution[500], 1);
+      assert.ok(snapshot.averageDurationMs > 0);
+      assert.strictEqual(snapshot.slowestDurationMs, 15);
+
+      diag.reset();
+      const resetSnap = diag.getSnapshot();
+      assert.strictEqual(resetSnap.totalErrorsMapped, 0);
+      assert.strictEqual(resetSnap.successfulMappings, 0);
+      assert.strictEqual(resetSnap.fallbackMappings, 0);
+      assert.strictEqual(resetSnap.mappingFailures, 0);
+      assert.strictEqual(resetSnap.resolutionFailures, 0);
+      assert.strictEqual(Object.keys(resetSnap.statusDistribution).length, 0);
+    },
+  );
 });

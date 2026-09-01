@@ -27,6 +27,7 @@ export interface HttpErrorMappingOptions {
   readonly cancellationStatus?: number | undefined;
   readonly includeErrorDetails?: boolean | undefined;
   readonly customStatusMap?: Record<string, number> | undefined;
+  readonly sensitiveKeys?: readonly string[] | undefined;
 }
 
 export interface HttpExecutionOptions extends HttpRequestOptions {
