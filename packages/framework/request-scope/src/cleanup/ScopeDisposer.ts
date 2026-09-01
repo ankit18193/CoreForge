@@ -15,21 +15,27 @@ export class ScopeDisposer {
       if (inst && typeof inst === 'object' && 'dispose' in inst) {
         const disposable = inst as Disposable;
 
-        const timeoutPromise = new Promise<void>((_, reject) => {
-          const id = setTimeout(() => {
-            reject(
-              new DisposalTimeoutError(
-                `ScopeDisposer: disposal of service timed out after ${this._timeoutMs}ms.`,
-              ),
-            );
-          }, this._timeoutMs);
-          if (id && typeof id === 'object' && 'unref' in id) {
-            (id as { unref: () => void }).unref();
-          }
-        });
+        let timerId: NodeJS.Timeout | undefined;
+        try {
+          const timeoutPromise = new Promise<void>((_, reject) => {
+            timerId = setTimeout(() => {
+              reject(
+                new DisposalTimeoutError(
+                  `ScopeDisposer: disposal of service timed out after ${this._timeoutMs}ms.`,
+                ),
+              );
+            }, this._timeoutMs);
+          });
 
-        const disposePromise = Promise.resolve(disposable.dispose());
-        await Promise.race([disposePromise, timeoutPromise]);
+          const disposePromise = Promise.resolve().then(() => disposable.dispose());
+          disposePromise.catch(() => {});
+
+          await Promise.race([disposePromise, timeoutPromise]);
+        } finally {
+          if (timerId !== undefined) {
+            clearTimeout(timerId);
+          }
+        }
       }
     }
   }
