@@ -50,6 +50,7 @@ export interface HttpTransportOptions {
   readonly autoStart?: boolean | undefined;
   readonly router?: unknown | undefined;
   readonly serializationEngine?: unknown | undefined;
+  readonly errorMappingEngine?: unknown | undefined;
 }
 
 export interface HttpAdapterConfig {

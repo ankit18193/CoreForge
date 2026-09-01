@@ -1,5 +1,8 @@
 import { HttpResponse, TransportResponse } from '@coreforge/contracts';
 
+import { DefaultHttpErrorMapper } from './error/DefaultHttpErrorMapper';
+import { HttpErrorMappingEngine } from './error/HttpErrorMappingEngine';
+import { HttpPublicErrorSnapshot } from './error/HttpPublicErrorSnapshot';
 import { HttpErrorMapper } from './HttpErrorMapper';
 import { HttpResponseFactory } from './HttpResponseFactory';
 import { HttpSerializationEngine } from './HttpSerializationEngine';
@@ -23,29 +26,40 @@ export class HttpResponseMapper {
     transportResponse: TransportResponse,
     _options: HttpExecutionOptions = {},
   ): number {
-    const rawBody = transportResponse.body as Record<string, unknown> | undefined;
+    const rawBody = transportResponse.body as Record<string, unknown>;
+
+    // 1. Explicit status in response body
     if (
       rawBody &&
       typeof rawBody === 'object' &&
-      typeof rawBody['status'] === 'number' &&
-      Number.isInteger(rawBody['status'])
+      typeof rawBody.status === 'number' &&
+      rawBody.status >= 100 &&
+      rawBody.status <= 599
     ) {
-      return rawBody['status'];
+      return rawBody.status;
     }
 
-    const meta = transportResponse.metadata as Record<string, unknown> | undefined;
-    if (meta && typeof meta['status'] === 'number' && Number.isInteger(meta['status'])) {
-      return meta['status'];
+    // 2. Explicit status in transport metadata
+    if (
+      transportResponse.metadata &&
+      typeof transportResponse.metadata.status === 'number' &&
+      transportResponse.metadata.status >= 100 &&
+      transportResponse.metadata.status <= 599
+    ) {
+      return transportResponse.metadata.status;
     }
 
-    if (meta && (meta['isCreated'] === true || meta['created'] === true)) {
+    // 3. Explicit isCreated flag in transport metadata -> 201 Created
+    if (transportResponse.metadata && Boolean(transportResponse.metadata.isCreated)) {
       return HTTP_STATUS_CODES.CREATED;
     }
 
-    if (meta && (meta['noContent'] === true || meta['isNoContent'] === true)) {
+    // 4. Explicit noContent flag in transport metadata -> 204 No Content
+    if (transportResponse.metadata && Boolean(transportResponse.metadata.noContent)) {
       return HTTP_STATUS_CODES.NO_CONTENT;
     }
 
+    // 5. Default success
     return HTTP_STATUS_CODES.OK;
   }
 
@@ -65,12 +79,13 @@ export class HttpResponseMapper {
   }
 
   /**
-   * Synchronous mapping for backward-compatibility and non-serialized execution.
+   * Synchronous mapping for fallback or non-streaming paths.
    */
   public static toHttpResponse<TBody = unknown>(
     transportResponse: TransportResponse<TBody>,
     errorOptions: HttpErrorMappingOptions = {},
     execOptions: HttpExecutionOptions = {},
+    errorEngine?: HttpErrorMappingEngine,
   ): HttpResponse<TBody> {
     if (transportResponse.success) {
       const rawBody = transportResponse.body as Record<string, unknown>;
@@ -116,11 +131,22 @@ export class HttpResponseMapper {
       );
     }
 
-    const status = HttpErrorMapper.resolveStatus(transportResponse.error, errorOptions);
+    const context = HttpPublicErrorSnapshot.createContext({
+      metadata: transportResponse.metadata,
+    });
+
+    const mappingResult = errorEngine
+      ? errorEngine.mapErrorSync(transportResponse.error, context)
+      : new DefaultHttpErrorMapper(errorOptions).map(transportResponse.error, context);
+
+    const normalizedHeaders = HttpResponseMapper.normalizeHeaders(
+      (mappingResult.headers ?? {}) as Record<string, string | readonly string[]>,
+    );
+
     return HttpResponseFactory.createFailure<TBody>(
-      status,
+      mappingResult.status,
       transportResponse.error,
-      {},
+      normalizedHeaders,
       undefined,
       transportResponse.metadata,
       errorOptions,
@@ -136,13 +162,58 @@ export class HttpResponseMapper {
     errorOptions: HttpErrorMappingOptions = {},
     execOptions: HttpExecutionOptions = {},
     engine?: HttpSerializationEngine,
+    errorEngine?: HttpErrorMappingEngine,
   ): Promise<HttpResponse<TBody>> {
     if (!transportResponse.success) {
-      const status = HttpErrorMapper.resolveStatus(transportResponse.error, errorOptions);
+      const context = HttpPublicErrorSnapshot.createContext({
+        metadata: transportResponse.metadata,
+      });
+
+      const mappingResult = errorEngine
+        ? await errorEngine.mapError(transportResponse.error, context)
+        : new DefaultHttpErrorMapper(errorOptions).map(transportResponse.error, context);
+
+      const errorPayload = { error: mappingResult.publicError };
+      const normalizedHeaders = HttpResponseMapper.normalizeHeaders(
+        (mappingResult.headers ?? {}) as Record<string, string | readonly string[]>,
+      );
+
+      // Phase 8.8: Error responses reuse Phase 8.7 serialization engine if provided
+      if (engine) {
+        const requestedMediaType = execOptions.mediaType ?? 'application/json';
+        const serResult = await engine.serialize(errorPayload, {
+          status: mappingResult.status,
+          mediaType: requestedMediaType,
+          charset: execOptions.charset,
+          serializerId: execOptions.serializerId,
+          transformationOptions: {
+            fieldsToRedact: execOptions.fieldsToRedact,
+            circularPolicy: execOptions.circularPolicy,
+          },
+          timeoutMs: execOptions.timeoutMs,
+          signal: execOptions.signal,
+          throwOnError: false,
+        });
+
+        if (serResult.success) {
+          if (!normalizedHeaders['content-type']) {
+            normalizedHeaders['content-type'] = serResult.mediaType ?? requestedMediaType;
+          }
+
+          return HttpResponseFactory.createSuccess<TBody>(
+            mappingResult.status,
+            serResult.value as TBody,
+            normalizedHeaders,
+            undefined,
+            transportResponse.metadata,
+          );
+        }
+      }
+
       return HttpResponseFactory.createFailure<TBody>(
-        status,
+        mappingResult.status,
         transportResponse.error,
-        {},
+        normalizedHeaders,
         undefined,
         transportResponse.metadata,
         errorOptions,

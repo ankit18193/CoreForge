@@ -1,4 +1,6 @@
 import {
+  HttpErrorMapper,
+  HttpErrorMapperRegistrationOptions,
   HttpResponseTransformer,
   HttpSerializer,
   HttpSerializerOptions,
@@ -7,6 +9,8 @@ import {
 import { ApplicationIntegration } from '@coreforge/integration';
 
 import { HttpTransportManager } from './HttpTransportManager';
+import { HttpErrorMapperRegistry } from '../response/error/HttpErrorMapperRegistry';
+import { HttpErrorMappingEngine } from '../response/error/HttpErrorMappingEngine';
 import { HttpSerializationEngine } from '../response/HttpSerializationEngine';
 import { HttpSerializerRegistry } from '../response/HttpSerializerRegistry';
 import { HttpSerializerResolver } from '../response/HttpSerializerResolver';
@@ -19,6 +23,11 @@ export interface SerializerRegistrationItem {
   readonly options?: HttpSerializerOptions | undefined;
 }
 
+export interface ErrorMapperRegistrationItem {
+  readonly mapper: HttpErrorMapper;
+  readonly options?: HttpErrorMapperRegistrationOptions | undefined;
+}
+
 export class HttpTransportBuilder {
   private readonly _application?: ApplicationIntegration | undefined;
   private readonly _transportManager?: TransportManager | undefined;
@@ -28,6 +37,7 @@ export class HttpTransportBuilder {
   private readonly _router?: HttpRouter | undefined;
   private readonly _serializers: readonly SerializerRegistrationItem[];
   private readonly _responseTransformer?: HttpResponseTransformer | undefined;
+  private readonly _errorMappers: readonly ErrorMapperRegistrationItem[];
 
   private constructor(
     application?: ApplicationIntegration,
@@ -38,6 +48,7 @@ export class HttpTransportBuilder {
     router?: HttpRouter,
     serializers: readonly SerializerRegistrationItem[] = [],
     responseTransformer?: HttpResponseTransformer,
+    errorMappers: readonly ErrorMapperRegistrationItem[] = [],
   ) {
     this._application = application;
     this._transportManager = transportManager;
@@ -47,6 +58,7 @@ export class HttpTransportBuilder {
     this._router = router;
     this._serializers = serializers;
     this._responseTransformer = responseTransformer;
+    this._errorMappers = errorMappers;
   }
 
   public static create(): HttpTransportBuilder {
@@ -63,6 +75,7 @@ export class HttpTransportBuilder {
       this._router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -76,6 +89,7 @@ export class HttpTransportBuilder {
       this._router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -89,6 +103,7 @@ export class HttpTransportBuilder {
       this._router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -102,6 +117,7 @@ export class HttpTransportBuilder {
       this._router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -115,6 +131,7 @@ export class HttpTransportBuilder {
       this._router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -128,6 +145,23 @@ export class HttpTransportBuilder {
       router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
+    );
+  }
+
+  public withRoute(route: import('@coreforge/contracts').HttpRoute): HttpTransportBuilder {
+    const router = this._router ?? new HttpRouter();
+    router.route(route);
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      router,
+      this._serializers,
+      this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -146,6 +180,7 @@ export class HttpTransportBuilder {
       router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -164,6 +199,7 @@ export class HttpTransportBuilder {
       router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -182,6 +218,7 @@ export class HttpTransportBuilder {
       router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -202,6 +239,7 @@ export class HttpTransportBuilder {
       router,
       this._serializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -228,6 +266,7 @@ export class HttpTransportBuilder {
       this._router,
       nextSerializers,
       this._responseTransformer,
+      this._errorMappers,
     );
   }
 
@@ -241,6 +280,25 @@ export class HttpTransportBuilder {
       this._router,
       this._serializers,
       transformer,
+      this._errorMappers,
+    );
+  }
+
+  public withErrorMapper(
+    mapper: HttpErrorMapper,
+    options?: HttpErrorMapperRegistrationOptions,
+  ): HttpTransportBuilder {
+    const nextErrorMappers = [...this._errorMappers, { mapper, options }];
+    return new HttpTransportBuilder(
+      this._application,
+      this._transportManager,
+      this._defaultTimeoutMs,
+      this._errorMappingOptions,
+      this._autoStart,
+      this._router,
+      this._serializers,
+      this._responseTransformer,
+      nextErrorMappers,
     );
   }
 
@@ -250,18 +308,15 @@ export class HttpTransportBuilder {
     if (this._serializers.length > 0 || this._responseTransformer) {
       const registry = new HttpSerializerRegistry();
 
-      // Register user-provided serializers
       for (const item of this._serializers) {
         registry.register(item.serializer, item.options);
       }
 
-      // Default JSON serializer fallback if no serializer for application/json was registered
       const resolverTest = new HttpSerializerResolver(registry);
       if (!resolverTest.resolve('application/json')) {
         registry.register(new HttpJsonSerializer());
       }
 
-      // Lock the registry during build
       registry.lock();
 
       const resolver = new HttpSerializerResolver(registry);
@@ -269,6 +324,19 @@ export class HttpTransportBuilder {
         resolver,
         undefined,
         this._responseTransformer,
+      );
+    }
+
+    let errorMappingEngine: HttpErrorMappingEngine | undefined;
+    if (this._errorMappers.length > 0) {
+      const errorRegistry = new HttpErrorMapperRegistry();
+      for (const item of this._errorMappers) {
+        errorRegistry.register(item.mapper, item.options);
+      }
+      errorRegistry.lock();
+      errorMappingEngine = new HttpErrorMappingEngine(
+        errorRegistry,
+        this._errorMappingOptions ?? {},
       );
     }
 
@@ -280,6 +348,7 @@ export class HttpTransportBuilder {
       autoStart: this._autoStart,
       router: this._router,
       serializationEngine,
+      errorMappingEngine,
     });
   }
 }

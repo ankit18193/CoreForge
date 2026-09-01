@@ -78,7 +78,9 @@ export class HttpControllerExecutor {
         this._diagnostics.recordExecutionFailure(durationMs);
       }
 
-      return HttpControllerSnapshot.createResult<TResult>(false, state, durationMs);
+      return HttpControllerSnapshot.createResult<TResult>(false, state, durationMs, undefined, {
+        error: err,
+      });
     }
   }
 

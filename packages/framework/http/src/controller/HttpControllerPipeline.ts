@@ -134,27 +134,8 @@ export class HttpControllerPipeline {
       );
 
       if (!outcome.success) {
-        if (outcome.state === 'CANCELLED') {
-          const cancelStatus =
-            this._errorMappingOptions.cancellationStatus ?? HTTP_STATUS_CODES.CLIENT_CLOSED_REQUEST;
-          return HttpResponseFactory.createFailure<TRes>(
-            cancelStatus,
-            new Error('Controller execution was cancelled'),
-            {},
-            undefined,
-            undefined,
-            this._errorMappingOptions,
-          );
-        }
-
-        return HttpResponseFactory.createFailure<TRes>(
-          HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR,
-          new Error(`Controller execution failed for endpoint '${endpoint.id}'`),
-          {},
-          undefined,
-          undefined,
-          this._errorMappingOptions,
-        );
+        const err = outcome.metadata?.error;
+        throw err ?? new Error(`Controller execution failed for endpoint '${endpoint.id}'`);
       }
 
       // Check if controller returned an HttpResponse directly

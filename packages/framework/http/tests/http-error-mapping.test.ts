@@ -2,6 +2,7 @@ import * as assert from 'node:assert';
 import { test } from 'node:test';
 
 import type { HttpErrorMapper, HttpErrorMappingResult } from '@coreforge/contracts';
+import { TransportResponseFactory } from '@coreforge/transport';
 
 import {
   CoreForgeError,
@@ -20,7 +21,14 @@ import {
   HttpErrorMappingValidationError,
   HttpErrorMappingValidator,
   HttpErrorSanitizer,
+  HttpJsonSerializer,
   HttpPublicErrorSnapshot,
+  HttpResponseMapper,
+  HttpRouter,
+  HttpSerializationEngine,
+  HttpSerializerRegistry,
+  HttpSerializerResolver,
+  HttpTransportBuilder,
   TransportError,
 } from '../src/index';
 
@@ -631,6 +639,211 @@ test('CoreForge HTTP Error Mapping Engine (@coreforge/http)', async (t) => {
       assert.strictEqual(resetSnap.mappingFailures, 0);
       assert.strictEqual(resetSnap.resolutionFailures, 0);
       assert.strictEqual(Object.keys(resetSnap.statusDistribution).length, 0);
+    },
+  );
+
+  // ─── 9. Execution Pipeline & Phase 8.7 Serialization Integration ───────────
+
+  await t.test(
+    '9a. HttpResponseMapper: serializes error response body via HttpSerializationEngine',
+    async () => {
+      const serRegistry = new HttpSerializerRegistry();
+      serRegistry.register(new HttpJsonSerializer());
+      const serResolver = new HttpSerializerResolver(serRegistry);
+      const serializationEngine = new HttpSerializationEngine(serResolver);
+
+      const transportFailure = TransportResponseFactory.createFailure(
+        new CoreForgeError('Invalid email format', 'VALIDATION_FAILED', { field: 'email' }),
+      );
+
+      const httpRes = await HttpResponseMapper.toHttpResponseAsync(
+        transportFailure,
+        { includeErrorDetails: true },
+        { mediaType: 'application/json' },
+        serializationEngine,
+      );
+
+      assert.strictEqual(httpRes.status, 400);
+      assert.strictEqual(httpRes.headers['content-type'], 'application/json');
+      assert.strictEqual(typeof httpRes.body, 'string');
+
+      const parsed = JSON.parse(httpRes.body as unknown as string);
+      assert.strictEqual(parsed.error.code, 'VALIDATION_FAILED');
+      assert.strictEqual(parsed.error.message, 'Invalid email format');
+      assert.strictEqual(parsed.error.details.field, 'email');
+    },
+  );
+
+  await t.test(
+    '9b. HttpResponseMapper: custom error mapper result is serialized via HttpSerializationEngine',
+    async () => {
+      const serRegistry = new HttpSerializerRegistry();
+      serRegistry.register(new HttpJsonSerializer());
+      const serResolver = new HttpSerializerResolver(serRegistry);
+      const serializationEngine = new HttpSerializationEngine(serResolver);
+
+      const errorEngine = new HttpErrorMappingEngine();
+      const customMapper: HttpErrorMapper = {
+        id: 'unprocessable-entity-mapper',
+        map: () => ({
+          status: 422,
+          publicError: { code: 'UNPROCESSABLE_ENTITY', message: 'Semantic validation error' },
+        }),
+      };
+      errorEngine.registerMapper(customMapper, { code: 'SEMANTIC_ERROR' });
+
+      const transportFailure = TransportResponseFactory.createFailure(
+        new CoreForgeError('Semantic error', 'SEMANTIC_ERROR'),
+      );
+
+      const httpRes = await HttpResponseMapper.toHttpResponseAsync(
+        transportFailure,
+        {},
+        { mediaType: 'application/json' },
+        serializationEngine,
+        errorEngine,
+      );
+
+      assert.strictEqual(httpRes.status, 422);
+      assert.strictEqual(typeof httpRes.body, 'string');
+      const parsed = JSON.parse(httpRes.body as unknown as string);
+      assert.strictEqual(parsed.error.code, 'UNPROCESSABLE_ENTITY');
+      assert.strictEqual(parsed.error.message, 'Semantic validation error');
+    },
+  );
+
+  await t.test('9c. Middleware reverse unwinding during error propagation', async () => {
+    const events: string[] = [];
+
+    const router = new HttpRouter();
+    router.use({
+      id: 'mw-outer',
+      name: 'OuterMiddleware',
+      async execute(_ctx, next) {
+        events.push('enter outer');
+        try {
+          return await next();
+        } finally {
+          events.push('unwind outer');
+        }
+      },
+    });
+    router.use({
+      id: 'mw-inner',
+      name: 'InnerMiddleware',
+      async execute(_ctx, next) {
+        events.push('enter inner');
+        try {
+          return await next();
+        } finally {
+          events.push('unwind inner');
+        }
+      },
+    });
+    router.route({
+      id: 'fail-route',
+      path: '/fail',
+      method: 'GET',
+      operation: 'fail.op',
+    });
+    router.registerController({
+      id: 'error.controller',
+      name: 'ErrorController',
+      execute: () => {
+        events.push('controller throws');
+        throw new CoreForgeError('Access denied', 'FORBIDDEN_RESOURCE');
+      },
+    });
+    router.registerEndpoint({
+      id: 'fail.endpoint',
+      name: 'FailEndpoint',
+      routeId: 'fail-route',
+      operation: 'fail.op',
+      controllerId: 'error.controller',
+      metadata: {},
+      enabled: true,
+      priority: 0,
+    });
+
+    const manager = HttpTransportBuilder.create().withRouter(router).build();
+    await manager.start();
+
+    const response = await manager.handleRoutedRequest({
+      method: 'GET',
+      url: '/fail',
+      path: '/fail',
+      headers: {},
+    });
+
+    assert.strictEqual(response.status, 403);
+    assert.deepStrictEqual(events, [
+      'enter outer',
+      'enter inner',
+      'controller throws',
+      'unwind inner',
+      'unwind outer',
+    ]);
+
+    await manager.stop();
+  });
+
+  await t.test(
+    '9d. HttpTransportBuilder: registers custom error mapper and locks registry',
+    async () => {
+      const customMapper: HttpErrorMapper = {
+        id: 'custom-teapot-mapper',
+        map: () => ({
+          status: 418,
+          publicError: { code: 'I_AM_A_TEAPOT', message: 'Short and stout' },
+        }),
+      };
+
+      const router = new HttpRouter();
+      router.route({
+        id: 'brew-route',
+        path: '/brew',
+        method: 'POST',
+        operation: 'brew.op',
+      });
+      router.registerController({
+        id: 'coffee.controller',
+        name: 'CoffeeController',
+        execute: () => {
+          throw new CoreForgeError('Cannot brew coffee', 'BREW_COFFEE_FAILED');
+        },
+      });
+      router.registerEndpoint({
+        id: 'brew.endpoint',
+        name: 'BrewEndpoint',
+        routeId: 'brew-route',
+        operation: 'brew.op',
+        controllerId: 'coffee.controller',
+        metadata: {},
+        enabled: true,
+        priority: 0,
+      });
+
+      const manager = HttpTransportBuilder.create()
+        .withRouter(router)
+        .withErrorMapper(customMapper, { code: 'BREW_COFFEE_FAILED' })
+        .build();
+
+      await manager.start();
+
+      assert.ok(manager.errorMappingEngine?.registry.locked);
+
+      const response = await manager.handleRoutedRequest({
+        method: 'POST',
+        url: '/brew',
+        path: '/brew',
+        headers: {},
+      });
+
+      assert.strictEqual(response.status, 418);
+      const parsed = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
+      assert.strictEqual((parsed as { error: { code: string } }).error.code, 'I_AM_A_TEAPOT');
+
+      await manager.stop();
     },
   );
 });

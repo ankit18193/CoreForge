@@ -2,6 +2,7 @@ import {
   HttpBindingDiagnosticsSnapshot,
   HttpControllerDiagnosticsSnapshot,
   HttpDiagnosticsSnapshot,
+  HttpErrorMappingDiagnosticsSnapshot,
   HttpMiddleware,
   HttpMiddlewareDiagnosticsSnapshot,
   HttpMiddlewareOptions,
@@ -19,6 +20,7 @@ import { HttpRoutingDiagnostics } from '../diagnostics/HttpRoutingDiagnostics';
 import { HttpExecutionCoordinator } from '../execution/HttpExecutionCoordinator';
 import { HttpLifecycleManager } from '../lifecycle/HttpLifecycleManager';
 import { HttpState } from '../lifecycle/HttpState';
+import { HttpErrorMappingEngine } from '../response/error/HttpErrorMappingEngine';
 import { HttpSerializationEngine } from '../response/HttpSerializationEngine';
 import { HttpRouter } from '../routing/HttpRouter';
 import { HttpRoutingCoordinator } from '../routing/HttpRoutingCoordinator';
@@ -38,6 +40,7 @@ export class HttpTransportManager {
   private readonly _router?: HttpRouter | undefined;
   private readonly _routingCoordinator?: HttpRoutingCoordinator | undefined;
   private readonly _errorMappingOptions: HttpErrorMappingOptions;
+  private readonly _errorMappingEngine?: HttpErrorMappingEngine | undefined;
 
   constructor(options: HttpTransportOptions = {}) {
     this._lifecycle = new HttpLifecycleManager();
@@ -65,6 +68,9 @@ export class HttpTransportManager {
       this._transportManager = builder.build();
     }
 
+    const errorMappingEngine = options.errorMappingEngine as HttpErrorMappingEngine | undefined;
+    this._errorMappingEngine = errorMappingEngine;
+
     this._coordinator = new HttpExecutionCoordinator(
       this._lifecycle,
       this._diagnostics,
@@ -72,6 +78,7 @@ export class HttpTransportManager {
       options.defaultTimeoutMs ?? 30000,
       this._errorMappingOptions,
       options.serializationEngine as HttpSerializationEngine | undefined,
+      errorMappingEngine,
     );
 
     if (options.router instanceof HttpRouter) {
@@ -182,14 +189,23 @@ export class HttpTransportManager {
     return this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.getDiagnostics();
   }
 
+  public get errorMappingEngine(): HttpErrorMappingEngine | undefined {
+    return this._errorMappingEngine;
+  }
+
   public getSerializationDiagnostics(): HttpResponseDiagnosticsSnapshot | undefined {
     return this._coordinator.serializationEngine?.diagnostics.getSnapshot();
+  }
+
+  public getErrorMappingDiagnostics(): HttpErrorMappingDiagnosticsSnapshot | undefined {
+    return this._errorMappingEngine?.diagnostics.getSnapshot();
   }
 
   public resetDiagnostics(): void {
     this._diagnostics.reset();
     this._routingDiagnostics.reset();
     this._coordinator.serializationEngine?.diagnostics.reset();
+    this._errorMappingEngine?.diagnostics.reset();
     this._routingCoordinator?.middlewarePipeline.resetDiagnostics();
     this._routingCoordinator?.controllerPipeline.coordinator.resetDiagnostics();
     this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.resetDiagnostics();

@@ -45,7 +45,11 @@ export class HttpRoutingCoordinator {
     this._errorMappingOptions = errorMappingOptions;
     this._middlewarePipeline =
       middlewarePipeline ??
-      new HttpMiddlewarePipeline(router.middlewareCoordinator, errorMappingOptions);
+      new HttpMiddlewarePipeline(
+        router.middlewareCoordinator,
+        errorMappingOptions,
+        executionCoordinator.errorMappingEngine,
+      );
     this._controllerPipeline =
       controllerPipeline ??
       new HttpControllerPipeline(

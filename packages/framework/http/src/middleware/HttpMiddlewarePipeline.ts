@@ -10,7 +10,11 @@ import type {
 import { HttpMiddlewareCoordinator } from './HttpMiddlewareCoordinator';
 import { HttpMiddlewareSnapshot } from './HttpMiddlewareSnapshot';
 import { HttpContextFactory } from '../context/HttpContextFactory';
+import { DefaultHttpErrorMapper } from '../response/error/DefaultHttpErrorMapper';
+import { HttpErrorMappingEngine } from '../response/error/HttpErrorMappingEngine';
+import { HttpPublicErrorSnapshot } from '../response/error/HttpPublicErrorSnapshot';
 import { HttpResponseFactory } from '../response/HttpResponseFactory';
+import { HttpResponseMapper } from '../response/HttpResponseMapper';
 import {
   HTTP_STATUS_CODES,
   HttpErrorMappingOptions,
@@ -20,13 +24,16 @@ import {
 export class HttpMiddlewarePipeline {
   private readonly _coordinator: HttpMiddlewareCoordinator;
   private readonly _errorMappingOptions: HttpErrorMappingOptions;
+  private readonly _errorMappingEngine?: HttpErrorMappingEngine | undefined;
 
   constructor(
     coordinator?: HttpMiddlewareCoordinator,
     errorMappingOptions: HttpErrorMappingOptions = {},
+    errorMappingEngine?: HttpErrorMappingEngine,
   ) {
     this._coordinator = coordinator ?? new HttpMiddlewareCoordinator();
     this._errorMappingOptions = errorMappingOptions;
+    this._errorMappingEngine = errorMappingEngine;
   }
 
   public get coordinator(): HttpMiddlewareCoordinator {
@@ -160,13 +167,46 @@ export class HttpMiddlewarePipeline {
 
       return HttpResponseFactory.createSuccess<TRes>(HTTP_STATUS_CODES.OK, res as TRes);
     } catch (err: unknown) {
-      return HttpResponseFactory.createFailure<TRes>(
-        HTTP_STATUS_CODES.INTERNAL_SERVER_ERROR,
-        err,
-        {},
+      let rootErr: unknown = err;
+      while (rootErr && typeof rootErr === 'object') {
+        const nextErr =
+          (rootErr as { cause?: unknown }).cause ?? (rootErr as { details?: unknown }).details;
+        if (!nextErr || nextErr === rootErr || !(nextErr instanceof Error)) {
+          break;
+        }
+        rootErr = nextErr;
+      }
+
+      const context = HttpPublicErrorSnapshot.createContext({
+        requestId:
+          typeof (request as unknown as { id?: string })?.id === 'string'
+            ? (request as unknown as { id: string }).id
+            : undefined,
+        method: request.method,
+        url: request.url,
+        path: request.path,
+        metadata: options?.metadata,
+      });
+
+      const mappingResult = this._errorMappingEngine
+        ? await this._errorMappingEngine.mapError(rootErr, context)
+        : new DefaultHttpErrorMapper(this._errorMappingOptions).map(rootErr, context);
+
+      const errorPayload = { error: mappingResult.publicError };
+      const normalizedHeaders = HttpResponseMapper.normalizeHeaders(
+        (mappingResult.headers ?? {}) as Record<string, string | readonly string[]>,
+      );
+
+      if (!normalizedHeaders['content-type']) {
+        normalizedHeaders['content-type'] = 'application/json';
+      }
+
+      return HttpResponseFactory.createSuccess<TRes>(
+        mappingResult.status,
+        errorPayload as unknown as TRes,
+        normalizedHeaders,
         undefined,
-        undefined,
-        this._errorMappingOptions,
+        options?.metadata,
       );
     }
   }
