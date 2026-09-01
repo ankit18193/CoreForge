@@ -1,4 +1,6 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { test } from 'node:test';
 
 import type { HttpErrorMapper, HttpErrorMappingResult } from '@coreforge/contracts';
@@ -844,6 +846,136 @@ test('CoreForge HTTP Error Mapping Engine (@coreforge/http)', async (t) => {
       assert.strictEqual((parsed as { error: { code: string } }).error.code, 'I_AM_A_TEAPOT');
 
       await manager.stop();
+    },
+  );
+
+  // ─── 10. High Concurrency: 1,000 Concurrent Error Mappings ────────────────
+
+  await t.test(
+    '10. High-Concurrency: 1,000 concurrent error requests maintain strict isolation with zero cross-talk',
+    async () => {
+      const engine = new HttpErrorMappingEngine(undefined, { includeErrorDetails: true });
+
+      const testErrors = [
+        {
+          err: new CoreForgeError('Invalid email', 'VALIDATION_FAILED', { field: 'email' }),
+          expectedStatus: 400,
+          expectedCode: 'VALIDATION_FAILED',
+        },
+        {
+          err: new CoreForgeError('Unauthorized token', 'UNAUTHORIZED_ACCESS'),
+          expectedStatus: 401,
+          expectedCode: 'UNAUTHORIZED_ACCESS',
+        },
+        {
+          err: new CoreForgeError('Forbidden zone', 'FORBIDDEN_ZONE'),
+          expectedStatus: 403,
+          expectedCode: 'FORBIDDEN_ZONE',
+        },
+        {
+          err: new CoreForgeError('Conflict item', 'CONFLICT_RECORD'),
+          expectedStatus: 409,
+          expectedCode: 'CONFLICT_RECORD',
+        },
+        {
+          err: new CoreForgeError('Cancelled operation', 'OPERATION_CANCELLED'),
+          expectedStatus: 499,
+          expectedCode: 'OPERATION_CANCELLED',
+        },
+      ];
+
+      const CONCURRENCY = 1000;
+      const tasks = Array.from({ length: CONCURRENCY }, async (_, i) => {
+        const item = testErrors[i % testErrors.length];
+        const ctx = HttpPublicErrorSnapshot.createContext({
+          requestId: `req-${i}`,
+          method: 'POST',
+          url: `/resource/${i}`,
+        });
+
+        const result = await engine.mapError(item.err, ctx);
+
+        assert.strictEqual(result.status, item.expectedStatus);
+        assert.strictEqual(result.publicError.code, item.expectedCode);
+        return result;
+      });
+
+      const results = await Promise.all(tasks);
+      assert.strictEqual(results.length, CONCURRENCY);
+
+      const snapshot = engine.diagnostics.getSnapshot();
+      assert.strictEqual(snapshot.totalErrorsMapped, CONCURRENCY);
+      assert.strictEqual(snapshot.fallbackMappings, CONCURRENCY);
+      assert.strictEqual(snapshot.mappingFailures, 0);
+      assert.strictEqual(snapshot.statusDistribution[400], 200);
+      assert.strictEqual(snapshot.statusDistribution[401], 200);
+      assert.strictEqual(snapshot.statusDistribution[403], 200);
+      assert.strictEqual(snapshot.statusDistribution[409], 200);
+      assert.strictEqual(snapshot.statusDistribution[499], 200);
+    },
+  );
+
+  // ─── 11. Security & Redaction Boundary ────────────────────────────────────
+
+  await t.test(
+    '11. Security & Redaction Boundary: deep credential sanitization and numerical diagnostics',
+    async () => {
+      const sanitizer = HttpErrorSanitizer;
+
+      const sensitiveText =
+        'Failed connecting to postgres://user:secret123@db.prod.internal:5432/main with Bearer eyJhbGciOi.secret.token at C:\\Users\\Administrator\\keys\\cert.pem';
+      const sanitized = sanitizer.sanitizeString(sensitiveText);
+
+      assert.strictEqual(sanitized.includes('secret123'), false);
+      assert.strictEqual(sanitized.includes('eyJhbGciOi'), false);
+      assert.strictEqual(sanitized.includes('Administrator'), false);
+
+      const diag = new HttpErrorMappingDiagnostics();
+      diag.recordSuccess(400, 1.5);
+      diag.recordFallback(500, 2.0);
+      diag.recordFailure(3.0);
+
+      const snapshot = diag.getSnapshot();
+      for (const [key, value] of Object.entries(snapshot)) {
+        if (key === 'statusDistribution') {
+          for (const count of Object.values(value)) {
+            assert.strictEqual(typeof count, 'number');
+          }
+        } else {
+          assert.strictEqual(typeof value, 'number');
+        }
+      }
+    },
+  );
+
+  // ─── 12. Critical Architectural Boundary ──────────────────────────────────
+
+  await t.test(
+    '12. Critical Architectural Boundary: @coreforge/http has zero dependency on higher layers',
+    () => {
+      const packageJsonPath = path.resolve(__dirname, '../../package.json');
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+
+      const dependencies = Object.keys(pkg.dependencies || {});
+      const forbiddenPackages = [
+        '@coreforge/application',
+        '@coreforge/kernel',
+        '@coreforge/runtime',
+        '@coreforge/controllers',
+        '@coreforge/middleware',
+        '@coreforge/router',
+        '@coreforge/request-handler',
+        '@coreforge/binding',
+        '@coreforge/request-scope',
+      ];
+
+      for (const forbidden of forbiddenPackages) {
+        assert.strictEqual(
+          dependencies.includes(forbidden),
+          false,
+          `Illegal dependency detected: @coreforge/http must NOT depend on ${forbidden}`,
+        );
+      }
     },
   );
 });
