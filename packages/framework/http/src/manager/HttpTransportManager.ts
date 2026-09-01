@@ -7,6 +7,7 @@ import {
   HttpMiddlewareOptions,
   HttpRequest,
   HttpResponse,
+  HttpResponseDiagnosticsSnapshot,
   HttpRoutingDiagnosticsSnapshot,
   TransportManager as ITransportManager,
 } from '@coreforge/contracts';
@@ -18,6 +19,7 @@ import { HttpRoutingDiagnostics } from '../diagnostics/HttpRoutingDiagnostics';
 import { HttpExecutionCoordinator } from '../execution/HttpExecutionCoordinator';
 import { HttpLifecycleManager } from '../lifecycle/HttpLifecycleManager';
 import { HttpState } from '../lifecycle/HttpState';
+import { HttpSerializationEngine } from '../response/HttpSerializationEngine';
 import { HttpRouter } from '../routing/HttpRouter';
 import { HttpRoutingCoordinator } from '../routing/HttpRoutingCoordinator';
 import {
@@ -69,6 +71,7 @@ export class HttpTransportManager {
       this._transportManager,
       options.defaultTimeoutMs ?? 30000,
       this._errorMappingOptions,
+      options.serializationEngine as HttpSerializationEngine | undefined,
     );
 
     if (options.router instanceof HttpRouter) {
@@ -179,9 +182,14 @@ export class HttpTransportManager {
     return this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.getDiagnostics();
   }
 
+  public getSerializationDiagnostics(): HttpResponseDiagnosticsSnapshot {
+    return this._coordinator.serializationEngine.diagnostics.getSnapshot();
+  }
+
   public resetDiagnostics(): void {
     this._diagnostics.reset();
     this._routingDiagnostics.reset();
+    this._coordinator.serializationEngine.diagnostics.reset();
     this._routingCoordinator?.middlewarePipeline.resetDiagnostics();
     this._routingCoordinator?.controllerPipeline.coordinator.resetDiagnostics();
     this._routingCoordinator?.controllerPipeline.coordinator.bindingCoordinator.resetDiagnostics();

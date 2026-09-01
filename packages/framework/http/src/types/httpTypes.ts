@@ -33,6 +33,12 @@ export interface HttpExecutionOptions extends HttpRequestOptions {
   readonly timeoutMs?: number | undefined;
   readonly context?: ExecutionContext | undefined;
   readonly metadata?: Record<string, unknown> | undefined;
+  readonly signal?: AbortSignal | undefined;
+  readonly mediaType?: string | undefined;
+  readonly charset?: string | undefined;
+  readonly serializerId?: string | undefined;
+  readonly fieldsToRedact?: readonly string[] | undefined;
+  readonly circularPolicy?: 'ERROR' | 'SANITIZE' | undefined;
 }
 
 export interface HttpTransportOptions {
@@ -42,6 +48,7 @@ export interface HttpTransportOptions {
   readonly errorMappingOptions?: HttpErrorMappingOptions | undefined;
   readonly autoStart?: boolean | undefined;
   readonly router?: unknown | undefined;
+  readonly serializationEngine?: unknown | undefined;
 }
 
 export interface HttpAdapterConfig {

@@ -20,6 +20,10 @@ import { HttpRequestMapper } from '../request/HttpRequestMapper';
 import { HttpRequestSnapshot } from '../request/HttpRequestSnapshot';
 import { HttpResponseFactory } from '../response/HttpResponseFactory';
 import { HttpResponseMapper } from '../response/HttpResponseMapper';
+import { HttpSerializationEngine } from '../response/HttpSerializationEngine';
+import { HttpSerializerRegistry } from '../response/HttpSerializerRegistry';
+import { HttpSerializerResolver } from '../response/HttpSerializerResolver';
+import { HttpJsonSerializer } from '../response/serializers/HttpJsonSerializer';
 import {
   HTTP_STATUS_CODES,
   HttpErrorMappingOptions,
@@ -32,6 +36,7 @@ export class HttpExecutionCoordinator {
   private readonly _transportManager: TransportManager;
   private readonly _defaultTimeoutMs: number;
   private readonly _errorMappingOptions: HttpErrorMappingOptions;
+  private readonly _serializationEngine: HttpSerializationEngine;
 
   constructor(
     lifecycle: HttpLifecycleManager,
@@ -39,12 +44,24 @@ export class HttpExecutionCoordinator {
     transportManager: TransportManager,
     defaultTimeoutMs = 30000,
     errorMappingOptions: HttpErrorMappingOptions = {},
+    serializationEngine?: HttpSerializationEngine,
   ) {
     this._lifecycle = lifecycle;
     this._diagnostics = diagnostics;
     this._transportManager = transportManager;
     this._defaultTimeoutMs = defaultTimeoutMs;
     this._errorMappingOptions = errorMappingOptions;
+    if (serializationEngine) {
+      this._serializationEngine = serializationEngine;
+    } else {
+      const reg = new HttpSerializerRegistry();
+      reg.register(new HttpJsonSerializer());
+      this._serializationEngine = new HttpSerializationEngine(new HttpSerializerResolver(reg));
+    }
+  }
+
+  public get serializationEngine(): HttpSerializationEngine {
+    return this._serializationEngine;
   }
 
   public async execute<TReq = unknown, TRes = unknown>(
@@ -137,9 +154,11 @@ export class HttpExecutionCoordinator {
           transportResult.error ?? new HttpError('Transport execution failed without response'),
         );
 
-      const httpResponse = HttpResponseMapper.toHttpResponse<TRes>(
+      const httpResponse = await HttpResponseMapper.toHttpResponseAsync<TRes>(
         transportResponse as TransportResponse<TRes>,
         this._errorMappingOptions,
+        options,
+        this._serializationEngine,
       );
 
       const durationMs = profiler.stop();

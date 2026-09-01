@@ -73,11 +73,13 @@ export class HttpResponseFactory {
     cookies?: Record<string, string>,
     metadata?: Record<string, unknown>,
   ): HttpResponse<TBody> {
-    const finalStatus =
-      status ??
-      (body === undefined || body === null ? HTTP_STATUS_CODES.NO_CONTENT : HTTP_STATUS_CODES.OK);
+    const finalStatus = status ?? HTTP_STATUS_CODES.OK;
+    // 204 No Content enforcement
+    const is204 = finalStatus === HTTP_STATUS_CODES.NO_CONTENT;
+    const effectiveBody = is204 ? undefined : body;
 
-    const clonedBody = body !== undefined ? deepCloneAndSanitize(body) : undefined;
+    const clonedBody =
+      effectiveBody !== undefined ? deepCloneAndSanitize(effectiveBody) : undefined;
     const clonedCookies = cookies ? deepCloneAndSanitize(cookies) : undefined;
     const clonedMetadata = metadata ? deepCloneAndSanitize(metadata) : undefined;
 

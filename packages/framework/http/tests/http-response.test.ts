@@ -2,11 +2,17 @@ import * as assert from 'node:assert';
 import { test } from 'node:test';
 
 import type { HttpResponse, HttpSerializer } from '@coreforge/contracts';
+import { ApplicationIntegrationBuilder } from '@coreforge/integration';
+import { TransportBuilder, TransportResponseFactory } from '@coreforge/transport';
 
 import {
   DefaultHttpResponseTransformer,
+  HttpDiagnostics,
   HttpError,
+  HttpExecutionCoordinator,
   HttpJsonSerializer,
+  HttpLifecycleManager,
+  HttpResponseMapper,
   HttpResponseSnapshot,
   HttpResponseTransformationError,
   HttpResponseValidator,
@@ -677,6 +683,204 @@ test('CoreForge HTTP Response & Serialization Engine (@coreforge/http)', async (
           engine.serialize({ data: 1 }, { mediaType: 'application/protobuf', throwOnError: true }),
         HttpSerializerNotFoundError,
       );
+    },
+  );
+
+  // ─── 10. HttpResponseMapper & Pipeline Integration ─────────────────────────
+
+  await t.test('10a. HttpResponseMapper: resolveStatus determinism & null body discipline', () => {
+    // 1. Default status 200
+    const defaultResp = TransportResponseFactory.createSuccess({ name: 'test' });
+    assert.strictEqual(HttpResponseMapper.resolveStatus(defaultResp), 200);
+
+    // 2. Explicit status in body
+    const bodyStatusResp = TransportResponseFactory.createSuccess({ status: 202, name: 'queued' });
+    assert.strictEqual(HttpResponseMapper.resolveStatus(bodyStatusResp), 202);
+
+    // 3. Explicit status in metadata
+    const metaStatusResp = TransportResponseFactory.createSuccess(
+      { name: 'custom' },
+      {
+        status: 206,
+      },
+    );
+    assert.strictEqual(HttpResponseMapper.resolveStatus(metaStatusResp), 206);
+
+    // 4. Explicit isCreated flag in metadata
+    const createdResp = TransportResponseFactory.createSuccess(
+      { id: '101' },
+      {
+        isCreated: true,
+      },
+    );
+    assert.strictEqual(HttpResponseMapper.resolveStatus(createdResp), 201);
+
+    // 5. Explicit noContent flag in metadata
+    const noContentResp = TransportResponseFactory.createSuccess(undefined, {
+      noContent: true,
+    });
+    assert.strictEqual(HttpResponseMapper.resolveStatus(noContentResp), 204);
+
+    // 6. Null body WITHOUT noContent flag must NOT auto-infer 204 — must resolve to 200
+    const nullBodyResp = TransportResponseFactory.createSuccess(null);
+    assert.strictEqual(
+      HttpResponseMapper.resolveStatus(nullBodyResp),
+      200,
+      'Null body without explicit noContent signal must remain 200',
+    );
+  });
+
+  await t.test('10b. HttpResponseMapper: normalizeHeaders normalizes keys to lowercase', () => {
+    const rawHeaders = {
+      'Content-Type': 'application/json',
+      'X-Custom-Header': 'val1',
+      'Set-Cookie': ['c1=v1', 'c2=v2'],
+    };
+    const normalized = HttpResponseMapper.normalizeHeaders(rawHeaders);
+    assert.strictEqual(normalized['content-type'], 'application/json');
+    assert.strictEqual(normalized['x-custom-header'], 'val1');
+    assert.deepStrictEqual(normalized['set-cookie'], ['c1=v1', 'c2=v2']);
+    assert.strictEqual(normalized['Content-Type'], undefined);
+  });
+
+  await t.test('10c. HttpResponseMapper: synchronous toHttpResponse maps success and error', () => {
+    const successTransport = TransportResponseFactory.createSuccess({ count: 42 });
+    const httpSuccess = HttpResponseMapper.toHttpResponse(successTransport);
+    assert.strictEqual(httpSuccess.status, 200);
+    assert.strictEqual(httpSuccess.headers['content-type'], 'application/json');
+    assert.deepStrictEqual(httpSuccess.body, { count: 42 });
+
+    const failureTransport = TransportResponseFactory.createFailure(new Error('Boom'));
+    const httpFailure = HttpResponseMapper.toHttpResponse(failureTransport);
+    assert.strictEqual(httpFailure.status, 500);
+    assert.strictEqual(httpFailure.headers['content-type'], 'application/json');
+  });
+
+  await t.test(
+    '10d. HttpResponseMapper: toHttpResponseAsync serializes body with HttpSerializationEngine',
+    async () => {
+      const registry = new HttpSerializerRegistry();
+      registry.register(new HttpJsonSerializer());
+      const engine = new HttpSerializationEngine(new HttpSerializerResolver(registry));
+
+      // 1. Success serialization
+      const successTransport = TransportResponseFactory.createSuccess({
+        user: 'Ankit',
+        role: 'admin',
+      });
+      const httpSuccess = await HttpResponseMapper.toHttpResponseAsync(
+        successTransport,
+        {},
+        {},
+        engine,
+      );
+      assert.strictEqual(httpSuccess.status, 200);
+      assert.strictEqual(httpSuccess.headers['content-type'], 'application/json');
+      assert.strictEqual(httpSuccess.body, '{"user":"Ankit","role":"admin"}');
+
+      // 2. 204 No Content skips serialization and enforces undefined body
+      const noContentTransport = TransportResponseFactory.createSuccess(
+        { shouldNotBeSerialized: true },
+        { noContent: true },
+      );
+      const http204 = await HttpResponseMapper.toHttpResponseAsync(
+        noContentTransport,
+        {},
+        {},
+        engine,
+      );
+      assert.strictEqual(http204.status, 204);
+      assert.strictEqual(http204.body, undefined);
+
+      // 3. Explicit 201 Created
+      const createdTransport = TransportResponseFactory.createSuccess(
+        { id: 99 },
+        {
+          isCreated: true,
+        },
+      );
+      const http201 = await HttpResponseMapper.toHttpResponseAsync(
+        createdTransport,
+        {},
+        {},
+        engine,
+      );
+      assert.strictEqual(http201.status, 201);
+      assert.strictEqual(http201.body, '{"id":99}');
+
+      // 4. Null body serializes normally to 'null' with status 200
+      const nullTransport = TransportResponseFactory.createSuccess(null);
+      const httpNull = await HttpResponseMapper.toHttpResponseAsync(nullTransport, {}, {}, engine);
+      assert.strictEqual(httpNull.status, 200);
+      assert.strictEqual(httpNull.body, 'null');
+
+      // 5. Redaction during pipeline serialization
+      const secretTransport = TransportResponseFactory.createSuccess({
+        username: 'ankit',
+        password: 'password123',
+      });
+      const httpRedacted = await HttpResponseMapper.toHttpResponseAsync(
+        secretTransport,
+        {},
+        { fieldsToRedact: ['password'] },
+        engine,
+      );
+      assert.strictEqual(httpRedacted.status, 200);
+      assert.strictEqual(httpRedacted.body, '{"username":"ankit","password":"[REDACTED]"}');
+    },
+  );
+
+  await t.test(
+    '10e. HttpExecutionCoordinator: complete end-to-end serialization pipeline integration',
+    async () => {
+      const app = ApplicationIntegrationBuilder.create().build();
+      app.applicationManager.register('items.get', {
+        async execute(input: unknown) {
+          return { item: 'Widget', input };
+        },
+      });
+      await app.start();
+
+      const tm = TransportBuilder.create().withApplication(app).build();
+      await tm.start();
+
+      const lifecycle = new HttpLifecycleManager();
+      lifecycle.start();
+      const diagnostics = new HttpDiagnostics();
+
+      const registry = new HttpSerializerRegistry();
+      registry.register(new HttpJsonSerializer());
+      const engine = new HttpSerializationEngine(new HttpSerializerResolver(registry));
+
+      const coordinator = new HttpExecutionCoordinator(
+        lifecycle,
+        diagnostics,
+        tm,
+        5000,
+        {},
+        engine,
+      );
+
+      const response = await coordinator.execute({
+        method: 'POST',
+        url: '/items',
+        path: '/items',
+        headers: { 'Content-Type': 'application/json' },
+        body: { serviceName: 'items.get', input: { id: 123 } },
+      });
+
+      assert.strictEqual(response.status, 200);
+      assert.strictEqual(response.headers['content-type'], 'application/json');
+      assert.strictEqual(response.body, '{"item":"Widget","input":{"id":123}}');
+
+      // Diagnostics verification
+      const serDiag = coordinator.serializationEngine.diagnostics.getSnapshot();
+      assert.strictEqual(serDiag.totalSerializations, 1);
+      assert.strictEqual(serDiag.successfulSerializations, 1);
+      assert.strictEqual(serDiag.failedSerializations, 0);
+
+      await tm.stop();
+      await app.stop();
     },
   );
 });
